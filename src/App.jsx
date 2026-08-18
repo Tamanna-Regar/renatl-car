@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Booking from './pages/Booking';
 import MyBookings from './pages/MyBookings';
 import Profile from './pages/Profile';
+import AdminDashboard from './pages/AdminDashboard';
 
 function App() {
   return (
@@ -19,9 +20,10 @@ function App() {
         <Route path="/bikes" element={<Bikes />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/booking/:id" element={<Booking />} />
+        <Route path="/booking/:type/:id" element={<Booking />} />
         <Route path="/my-bookings" element={<MyBookings />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </BrowserRouter>
   );

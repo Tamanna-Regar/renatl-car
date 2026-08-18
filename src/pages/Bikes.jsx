@@ -1,39 +1,56 @@
 import { Link } from 'react-router-dom';
 
-export default function Bikes() {
-  const bikesList = [
-    { id: 1, name: 'Mountain Bike', price: 'Rs 3,320/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg' },
-    { id: 2, name: 'Road Bike', price: 'Rs 2,905/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg' },
-    { id: 3, name: 'Hybrid Bike', price: 'Rs 3,735/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 4, name: 'Electric Bike', price: 'Rs 4,980/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 5, name: 'Folding Bike', price: 'Rs 4,150/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 6, name: 'Cruiser Bike', price: 'Rs 4,565/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 7, name: 'BMX Bike', price: 'Rs 2,490/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 8, name: 'Touring Bike', price: 'Rs 5,395/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 9, name: 'City Bike', price: 'Rs 3,320/day', image: 'https://m.media-amazon.com/images/I/616zet0w+3L._SX522_.jpg' },
-    { id: 10, name: 'Adventure Bike', price: 'Rs 5,810/day', image: 'https://m.media-amazon.com/images/I/61oQBuwOaXL._SX522_.jpg' },
-    { id: 11, name: 'Gravel Bike', price: 'Rs 3,984/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 12, name: 'Fat Bike', price: 'Rs 6,225/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 13, name: 'Dirt Bike', price: 'Rs 4,565/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg' },
-    { id: 14, name: 'Fixed Gear Bike', price: 'Rs 2,656/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg' },
-    { id: 15, name: 'Tandem Bike', price: 'Rs 6,640/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 16, name: 'Recumbent Bike', price: 'Rs 4,814/day', image: 'https://m.media-amazon.com/images/I/616zet0w+3L._SX522_.jpg' },
-    { id: 17, name: 'Cargo Bike', price: 'Rs 5,976/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg' },
-    { id: 18, name: 'Commuter Bike', price: 'Rs 3,486/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg' },
-    { id: 19, name: 'Sport Bike', price: 'Rs 5,644/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg' },
-    { id: 20, name: 'Single Speed Bike', price: 'Rs 2,324/day', image: 'https://m.media-amazon.com/images/I/61oQBuwOaXL._SX522_.jpg' },
-  ];
+export const bikesList = [
+  { id: 1, name: 'Mountain Bike', price: 'Rs 3,320/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg', specs: { model: 'MTB Pro 2024', rating: '4.3', frame: '17" Aluminum', weight: '13.5 kg', gears: '21 Speed', wheelSize: '29"', suspension: 'Front', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '21-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Black/Blue', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 2, name: 'Road Bike', price: 'Rs 2,905/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg', specs: { model: 'RoadMaster 16', rating: '4.1', frame: '16" Steel', weight: '8.2 kg', gears: '16 Speed', wheelSize: '28"', suspension: 'None', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '16-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Red', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 3, name: 'Hybrid Bike', price: 'Rs 3,735/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'Hybrid X18', rating: '4.4', frame: '18" Aluminum', weight: '12.4 kg', gears: '18 Speed', wheelSize: '28"', suspension: 'Front', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '18-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Grey', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 4, name: 'Electric Bike', price: 'Rs 4,980/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'E-Ride 500', rating: '4.5', frame: '19" Aluminum', weight: '24 kg', gears: '7 Speed', wheelSize: '28"', battery: '500W', engineType: 'Electric Hub Motor', fuelType: 'Electric', transmission: '7-Speed + Motor', seatingCapacity: '1', mileage: '60 km/charge', color: 'Black', powerBHP: '0.67 BHP (500W)', torque: '40 Nm' } },
+  { id: 5, name: 'Folding Bike', price: 'Rs 4,150/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'FoldEasy 14', rating: '4.0', frame: '14" Steel', weight: '11.8 kg', gears: '8 Speed', wheelSize: '20"', foldable: 'Yes', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '8-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'White', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 6, name: 'Cruiser Bike', price: 'Rs 4,565/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'Cruiser Classic', rating: '4.2', frame: '18" Steel', weight: '14.5 kg', gears: 'Single Speed', wheelSize: '26"', suspension: 'Full', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: 'Single Speed', seatingCapacity: '1', mileage: 'N/A', color: 'Maroon', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 7, name: 'BMX Bike', price: 'Rs 2,490/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'BMX Stunt Pro', rating: '4.0', frame: '20" Steel', weight: '10.3 kg', gears: 'Single Speed', wheelSize: '20"', style: 'Stunt', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: 'Single Speed', seatingCapacity: '1', mileage: 'N/A', color: 'Yellow', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 8, name: 'Touring Bike', price: 'Rs 5,395/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'Tourer 20', rating: '4.6', frame: '20" Steel', weight: '15.2 kg', gears: '27 Speed', wheelSize: '28"', suspension: 'Full', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '27-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Green', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 9, name: 'City Bike', price: 'Rs 3,320/day', image: 'https://m.media-amazon.com/images/I/616zet0w+3L._SX522_.jpg', specs: { model: 'CityRide 17', rating: '4.1', frame: '17" Aluminum', weight: '13 kg', gears: '8 Speed', wheelSize: '28"', suspension: 'Front', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '8-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Blue', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 10, name: 'Adventure Bike', price: 'Rs 5,810/day', image: 'https://m.media-amazon.com/images/I/61oQBuwOaXL._SX522_.jpg', specs: { model: 'Adventure X19', rating: '4.5', frame: '19" Aluminum', weight: '14.1 kg', gears: '21 Speed', wheelSize: '27.5"', suspension: 'Full', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '21-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Orange', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 11, name: 'Gravel Bike', price: 'Rs 3,984/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'GravelPro 18', rating: '4.3', frame: '18" Carbon', weight: '9.5 kg', gears: '18 Speed', wheelSize: '28"', suspension: 'Front', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '18-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Matte Black', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 12, name: 'Fat Bike', price: 'Rs 6,225/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'FatTire 20', rating: '4.2', frame: '20" Aluminum', weight: '16.8 kg', gears: '21 Speed', wheelSize: '26"', tireWidth: '4.0"', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '21-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Camo Green', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 13, name: 'Dirt Bike', price: 'Rs 4,565/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg', specs: { model: 'DirtX 17', rating: '4.4', frame: '17" Steel', weight: '12.9 kg', gears: '18 Speed', wheelSize: '26"', suspension: 'Full', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '18-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Red/Black', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 14, name: 'Fixed Gear Bike', price: 'Rs 2,656/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg', specs: { model: 'FixedGear 16', rating: '4.0', frame: '16" Steel', weight: '8.7 kg', gears: 'Single Speed', wheelSize: '28"', brakes: 'Minimal', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: 'Single Speed', seatingCapacity: '1', mileage: 'N/A', color: 'White/Black', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 15, name: 'Tandem Bike', price: 'Rs 6,640/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'Tandem Duo', rating: '4.1', frame: '20" Aluminum', weight: '18.5 kg', gears: '21 Speed', wheelSize: '28"', seats: '2', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '21-Speed Manual', seatingCapacity: '2', mileage: 'N/A', color: 'Blue/White', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 16, name: 'Recumbent Bike', price: 'Rs 4,814/day', image: 'https://m.media-amazon.com/images/I/616zet0w+3L._SX522_.jpg', specs: { model: 'Recumbent Comfort', rating: '4.2', frame: '18" Aluminum', weight: '15.3 kg', gears: '18 Speed', wheelSize: '20"', position: 'Reclined', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '18-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Silver', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 17, name: 'Cargo Bike', price: 'Rs 5,976/day', image: 'https://m.media-amazon.com/images/I/71cmtvdbRhL._SX522_.jpg', specs: { model: 'CargoMax 21', rating: '4.3', frame: '21" Steel', weight: '22 kg', gears: '8 Speed', wheelSize: '20"', capacity: '100 kg', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '8-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Black', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 18, name: 'Commuter Bike', price: 'Rs 3,486/day', image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg', specs: { model: 'Commuter 17', rating: '4.1', frame: '17" Aluminum', weight: '12.1 kg', gears: '10 Speed', wheelSize: '28"', suspension: 'Front', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '10-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Navy Blue', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 19, name: 'Sport Bike', price: 'Rs 5,644/day', image: 'https://m.media-amazon.com/images/I/71RCJ8dgB-L._SL1500_.jpg', specs: { model: 'SportX 16', rating: '4.6', frame: '16" Carbon', weight: '7.8 kg', gears: '22 Speed', wheelSize: '28"', suspension: 'None', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: '22-Speed Manual', seatingCapacity: '1', mileage: 'N/A', color: 'Red', powerBHP: 'N/A', torque: 'N/A' } },
+  { id: 20, name: 'Single Speed Bike', price: 'Rs 2,324/day', image: 'https://m.media-amazon.com/images/I/61oQBuwOaXL._SX522_.jpg', specs: { model: 'Single 15', rating: '3.9', frame: '15" Steel', weight: '11 kg', gears: 'Single Speed', wheelSize: '26"', brakes: 'Coaster', engineType: 'N/A (Pedal)', fuelType: 'N/A', transmission: 'Single Speed', seatingCapacity: '1', mileage: 'N/A', color: 'Grey', powerBHP: 'N/A', torque: 'N/A' } },
+];
 
+export default function Bikes() {
   return (
     <div style={{ padding: '2rem' }}>
       <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Available Bikes for Rent</h2>
       <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
         {bikesList.map((bike) => (
-          <div key={bike.id} style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '1rem', width: '250px', textAlign: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.1)', background: '#fff' }}>
-            <img src={bike.image} alt={bike.name} style={{ width: '100%', height: '150px', objectFit: 'cover', borderRadius: '4px' }} />
-            <h3 style={{ fontSize: '1.1rem', margin: '10px 0' }}>{bike.name}</h3>
-            <p style={{ color: 'green', fontWeight: 'bold' }}>{bike.price}</p>
-            <Link to={`/booking/${bike.id}`} style={{ display: 'inline-block', marginTop: '10px', padding: '0.5rem 1rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px' }}>Rent Now</Link>
+          <div key={bike.id} style={{ border: '1px solid #ddd', borderRadius: '8px', padding: '1rem', width: '280px', textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', background: '#fff', transition: 'transform 0.3s' }}>
+            <img src={bike.image} alt={bike.name} style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '4px' }} />
+            <h3 style={{ fontSize: '1.2rem', margin: '12px 0 6px 0', fontWeight: 'bold' }}>{bike.name}</h3>
+            <p style={{ color: '#28a745', fontWeight: 'bold', fontSize: '1.1rem', margin: '8px 0' }}>{bike.price}</p>
+
+            <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '4px', margin: '10px 0', textAlign: 'left', fontSize: '0.85rem' }}>
+              <p style={{ margin: '4px 0' }}><strong>Frame:</strong> {bike.specs.frame}</p>
+              <p style={{ margin: '4px 0' }}><strong>Weight:</strong> {bike.specs.weight}</p>
+              <p style={{ margin: '4px 0' }}><strong>Gears:</strong> {bike.specs.gears}</p>
+              <p style={{ margin: '4px 0' }}><strong>Wheel Size:</strong> {bike.specs.wheelSize}</p>
+              {bike.specs.suspension && <p style={{ margin: '4px 0' }}><strong>Suspension:</strong> {bike.specs.suspension}</p>}
+              {bike.specs.battery && <p style={{ margin: '4px 0' }}><strong>Battery:</strong> {bike.specs.battery}</p>}
+              {bike.specs.foldable && <p style={{ margin: '4px 0' }}><strong>Foldable:</strong> {bike.specs.foldable}</p>}
+              {bike.specs.style && <p style={{ margin: '4px 0' }}><strong>Style:</strong> {bike.specs.style}</p>}
+              {bike.specs.tireWidth && <p style={{ margin: '4px 0' }}><strong>Tire Width:</strong> {bike.specs.tireWidth}</p>}
+              {bike.specs.seats && <p style={{ margin: '4px 0' }}><strong>Seats:</strong> {bike.specs.seats}</p>}
+              {bike.specs.capacity && <p style={{ margin: '4px 0' }}><strong>Capacity:</strong> {bike.specs.capacity}</p>}
+              {bike.specs.position && <p style={{ margin: '4px 0' }}><strong>Position:</strong> {bike.specs.position}</p>}
+              {bike.specs.brakes && <p style={{ margin: '4px 0' }}><strong>Brakes:</strong> {bike.specs.brakes}</p>}
+            </div>
+
+            <Link to={`/booking/bike/${bike.id}`} style={{ display: 'inline-block', marginTop: '10px', padding: '0.6rem 1.2rem', background: '#007bff', color: '#fff', textDecoration: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>Rent Now</Link>
           </div>
         ))}
       </div>
