@@ -1,189 +1,93 @@
+import React, { useState, useEffect } from 'react';
+import { carsList } from './Cars';
+import { bikesList } from './Bikes';
+
 export default function MyBookings() {
-  const bookings = [
-    {
-      id: 1,
-      vehicle: 'BMW M5',
-      type: 'Car',
-      date: '2026-08-20',
-      days: '3 days',
-      status: 'Confirmed',
-      amount: 'Rs6,00,000,00',
-      color: '#22c55e',
-      image: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?w=400',
-      specs: {
-        model: 'M5 Competition',
-        engine: '4.4L V8 Twin-Turbo',
-        transmission: '8-Speed Automatic',
-        fuelType: 'Petrol',
-        seats: '5',
-        mileage: '8-10 km/l',
-      },
-    },
-    {
-      id: 2,
-      vehicle: 'Mountain Bike',
-      type: 'Bike',
-      date: '2026-08-24',
-      days: '2 days',
-      status: 'Pending',
-      amount: 'Rs8,00,000,00',
-      color: '#f59e0b',
-      image: 'https://m.media-amazon.com/images/I/714Csi6NaUL._SX522_.jpg',
-      specs: {
-        model: 'MTB Pro 21',
-        frame: '17" Aluminum',
-        weight: '13.5 kg',
-        gears: '21 Speed',
-        wheelSize: '29"',
-        suspension: 'Front',
-      },
-    },
-    {
-      id: 3,
-      vehicle: 'Mercedes-Benz E-Class',
-      type: 'Car',
-      date: '2026-08-28',
-      days: '5 days',
-      status: 'Completed',
-      amount: 'Rs17,50,000,00',
-      color: '#3b82f6',
-      image: 'https://images.unsplash.com/photo-1563720223185-11003d516935?w=400',
-      specs: {
-        model: 'E-Class E220d',
-        engine: '2.0L Diesel',
-        transmission: '9-Speed Automatic',
-        fuelType: 'Diesel',
-        seats: '5',
-        mileage: '17-19 km/l',
-      },
-    },
-  ];
+  const [bookedItems, setBookedItems] = useState([]);
+
+  const loadBookings = () => {
+    // Cars aur Bikes ka data localStorage ya default list se nikalna
+    const savedCars = localStorage.getItem('rentEasyCarsList');
+    const savedBikes = localStorage.getItem('rentEasyBikesList');
+
+    const currentCars = savedCars ? JSON.parse(savedCars) : carsList;
+    const currentBikes = savedBikes ? JSON.parse(savedBikes) : bikesList;
+
+    // Jin items ki booking ho chuki hai unhe filter karna
+    const bookedCars = currentCars.filter(item => item.isBooked);
+    const bookedBikes = currentBikes.filter(item => item.isBooked);
+
+    setBookedItems([...bookedCars, ...bookedBikes]);
+  };
+
+  useEffect(() => {
+    loadBookings();
+  }, []);
+
+  const handleCancelBooking = (id, type) => {
+    let listKey = type === 'bike' ? 'rentEasyBikesList' : 'rentEasyCarsList';
+    let defaultList = type === 'bike' ? bikesList : carsList;
+
+    const savedData = localStorage.getItem(listKey);
+    const currentList = savedData ? JSON.parse(savedData) : defaultList;
+
+    const updatedList = currentList.map((item) => {
+      if (String(item.id) === String(id)) {
+        return { ...item, isBooked: false, bookingDetails: null };
+      }
+      return item;
+    });
+
+    localStorage.setItem(listKey, JSON.stringify(updatedList));
+    loadBookings(); // List ko turant refresh karne ke liye
+    alert('Booking Cancelled Successfully!');
+  };
 
   return (
-    <div style={{ padding: '3rem 2rem', background: '#f5f7fb', minHeight: '80vh' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
-          <h2 style={{ fontSize: '2.5rem', margin: '0 0 0.5rem', color: '#1f2937' }}>My Bookings History</h2>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: '1.1rem' }}>
-            Track your recent reservations and rental status.
-          </p>
-        </div>
+    <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto' }}>
+      <h2 style={{ textAlign: 'center', marginBottom: '2rem', color: '#333' }}>My Bookings History</h2>
 
-        <div style={{ display: 'grid', gap: '1.5rem' }}>
-          {bookings.map((booking) => (
-            <div
-              key={booking.id}
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                background: '#fff',
-                borderRadius: '16px',
-                padding: '1.5rem 2rem',
-                boxShadow: '0 8px 20px rgba(0,0,0,0.06)',
-                border: '1px solid #e5e7eb',
-                flexWrap: 'wrap',
-                gap: '1.5rem',
-              }}
+      {bookedItems.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '3rem', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          <p style={{ fontSize: '1.2rem', color: '#666' }}>No active bookings found.</p>
+        </div>
+      ) : (
+        bookedItems.map((item) => {
+          // Check karo ki item car hai ya bike (aapki list ke hisaab se type determine karne ke liye)
+          const isBike = bikesList.some(b => String(b.id) === String(item.id));
+          const itemType = isBike ? 'bike' : 'car';
+
+          return (
+            <div 
+              key={item.id} 
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#fff', padding: '1rem', marginBottom: '1rem', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
             >
-              {/* Left: Photo + Info */}
-              <div style={{ display: 'flex', gap: '1.2rem', flex: '1 1 320px' }}>
-                <img
-                  src={booking.image}
-                  alt={booking.vehicle}
-                  style={{
-                    width: '140px',
-                    height: '100px',
-                    objectFit: 'cover',
-                    borderRadius: '10px',
-                    flexShrink: 0,
-                  }}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                <img src={item.image} alt={item.name} style={{ width: '120px', height: '80px', objectFit: 'cover', borderRadius: '6px' }} />
                 <div>
-                  <div style={{ fontSize: '0.8rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                    {booking.type}
-                  </div>
-                  <h3 style={{ margin: '0.35rem 0', fontSize: '1.4rem', color: '#111827' }}>{booking.vehicle}</h3>
-                  <div style={{ color: '#4b5563', fontSize: '0.95rem', marginBottom: '0.5rem' }}>
-                    Date: <strong>{booking.date}</strong> • Duration: <strong>{booking.days}</strong>
-                  </div>
-
-                  {/* Specifications */}
-                  <div
-                    style={{
-                      background: '#f8f9fa',
-                      borderRadius: '8px',
-                      padding: '0.6rem 0.8rem',
-                      fontSize: '0.82rem',
-                      color: '#374151',
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                      gap: '2px 12px',
-                    }}
-                  >
-                    {booking.specs.model && (
-                      <div><strong>Model:</strong> {booking.specs.model}</div>
-                    )}
-                    {booking.specs.engine && (
-                      <div><strong>Engine:</strong> {booking.specs.engine}</div>
-                    )}
-                    {booking.specs.transmission && (
-                      <div><strong>Transmission:</strong> {booking.specs.transmission}</div>
-                    )}
-                    {booking.specs.fuelType && (
-                      <div><strong>Fuel Type:</strong> {booking.specs.fuelType}</div>
-                    )}
-                    {booking.specs.seats && (
-                      <div><strong>Seats:</strong> {booking.specs.seats}</div>
-                    )}
-                    {booking.specs.mileage && (
-                      <div><strong>Mileage:</strong> {booking.specs.mileage}</div>
-                    )}
-                    {booking.specs.frame && (
-                      <div><strong>Frame:</strong> {booking.specs.frame}</div>
-                    )}
-                    {booking.specs.weight && (
-                      <div><strong>Weight:</strong> {booking.specs.weight}</div>
-                    )}
-                    {booking.specs.gears && (
-                      <div><strong>Gears:</strong> {booking.specs.gears}</div>
-                    )}
-                    {booking.specs.wheelSize && (
-                      <div><strong>Wheel Size:</strong> {booking.specs.wheelSize}</div>
-                    )}
-                    {booking.specs.suspension && (
-                      <div><strong>Suspension:</strong> {booking.specs.suspension}</div>
-                    )}
-                  </div>
+                  <h3 style={{ margin: '0 0 5px 0', color: '#333' }}>{item.name}</h3>
+                  <p style={{ margin: '0 0 5px 0', color: '#666', fontSize: '0.9rem' }}>
+                    Brand: {item.brand || 'N/A'} | Date: {item.bookingDetails ? `${item.bookingDetails.startDate} to ${item.bookingDetails.endDate}` : 'N/A'}
+                  </p>
+                  <p style={{ margin: 0, color: '#28a745', fontWeight: 'bold' }}>{item.price}</p>
+                  {item.bookingDetails && item.bookingDetails.totalAmount && (
+                    <p style={{ margin: '3px 0 0 0', color: '#333', fontSize: '0.9rem' }}>
+                      Total Paid: <strong>Rs {item.bookingDetails.totalAmount}</strong>
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Right: Status + Amount */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                <div
-                  style={{
-                    background: `${booking.color}20`,
-                    color: booking.color,
-                    border: `1px solid ${booking.color}40`,
-                    borderRadius: '999px',
-                    padding: '0.55rem 1rem',
-                    fontWeight: '700',
-                    minWidth: '110px',
-                    textAlign: 'center',
-                  }}
-                >
-                  {booking.status}
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>Total</div>
-                  <div style={{ fontWeight: '800', fontSize: '1.5rem', color: '#111827' }}>{booking.amount}</div>
-                </div>
-              </div>
+              <button 
+                onClick={() => handleCancelBooking(item.id, itemType)}
+                style={{ padding: '0.6rem 1.2rem', background: '#dc3545', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Cancel Booking
+              </button>
             </div>
-          ))}
-        </div>
-      </div>
+          );
+        })
+      )}
     </div>
   );
 }
