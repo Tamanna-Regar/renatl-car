@@ -37,6 +37,7 @@ export default function Register() {
     const newUser = {
       id: Date.now(),
       name: formData.name,
+       username: formData.name,
       email: formData.email,
       phone: formData.phone,
       password: formData.password, 

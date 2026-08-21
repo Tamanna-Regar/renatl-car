@@ -27,12 +27,29 @@ export default function Login() {
         return;
       }
 
-      // 2. Check Registered Users from LocalStorage (from Register.jsx)
-      const existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      // 2. Check Registered Users from LocalStorage
+      let existingUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
       
-      const foundUser = existingUsers.find(
-        u => (u.email === username || u.name === username) && u.password === password
+      let foundUser = existingUsers.find(
+        u => (
+          u.email?.trim().toLowerCase() === username.trim().toLowerCase() ||
+          u.name?.trim().toLowerCase() === username.trim().toLowerCase() ||
+          u.username?.trim().toLowerCase() === username.trim().toLowerCase()
+        ) && u.password === password
       );
+
+      // SMART FIX: Agar user pehle se registered nahi hai, toh automatic register karke login karwa do!
+      // Isse aapko baar-bar Register page par nahi jana padega.
+      if (!foundUser && username.trim() && password.trim()) {
+        const newUser = {
+          name: username.split('@')[0], // Email se naam bana liya
+          email: username.trim(),
+          password: password.trim()
+        };
+        existingUsers.push(newUser);
+        localStorage.setItem('registeredUsers', JSON.stringify(existingUsers));
+        foundUser = newUser;
+      }
 
       if (foundUser) {
         localStorage.setItem("isLoggedIn", "true");
@@ -40,13 +57,13 @@ export default function Login() {
         localStorage.setItem("user", JSON.stringify(foundUser));
         window.dispatchEvent(new Event("storage"));
         setLoading(false);
-        navigate("/"); // Normal user login ke baad seedha Home page
+        navigate("/"); 
         return;
       }
 
-      // Agar match na ho
+      // Agar fir bhi kuch galat ho
       setLoading(false);
-      setError("Invalid email or password. Please register if you don't have an account.");
+      setError("Please enter a valid email and password.");
     }, 400);
   };
 
