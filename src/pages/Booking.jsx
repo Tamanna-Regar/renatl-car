@@ -5,51 +5,99 @@ import { bikesList } from './Bikes';
 
 const API_URL = 'http://localhost:8000';
 
-export default function Booking() {
+const FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80';
 
+export default function Booking() {
   const { type, id } = useParams();
   const navigate = useNavigate();
 
   const [item, setItem] = useState(null);
+
+  // =========================
+  // BOOKING DATES
+  // =========================
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // =========================
+  // CUSTOMER DETAILS
+  // =========================
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
+
+  // =========================
+  // TOTAL
+  // =========================
   const [totalAmount, setTotalAmount] = useState(0);
+  const [totalDays, setTotalDays] = useState(0);
+
   const [loading, setLoading] = useState(false);
+
+  // =========================
+  // LOAD LOGGED-IN USER
+  // =========================
+  useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem('user');
+
+      if (savedUser) {
+        const user = JSON.parse(savedUser);
+
+        const savedName =
+          user.name ||
+          user.fullName ||
+          user.username ||
+          '';
+
+        const savedEmail =
+          user.email ||
+          user.username ||
+          '';
+
+        setFullName(savedName);
+        setEmail(savedEmail);
+      }
+    } catch (error) {
+      console.log('User data not found:', error);
+    }
+  }, []);
 
   // =========================
   // LOAD VEHICLE
   // =========================
-
   useEffect(() => {
-
     const defaultList =
-      type === 'car'
-        ? carsList
-        : bikesList;
+      type === 'car' ? carsList : bikesList;
 
     const listKey =
       type === 'car'
         ? 'rentEasyCarsList'
         : 'rentEasyBikesList';
 
-    const savedData =
-      localStorage.getItem(listKey);
+    let currentList = [...defaultList];
 
-    let currentList = defaultList;
+    // =========================
+    // LOAD SAVED CARS / BIKES
+    // =========================
+    try {
+      const savedData =
+        localStorage.getItem(listKey);
 
-    if (savedData) {
-
-      try {
-
+      if (savedData) {
         const parsed = JSON.parse(savedData);
 
         if (Array.isArray(parsed)) {
-
           currentList = defaultList.map((vehicle) => {
-
             const savedVehicle = parsed.find(
               (p) =>
-                String(p.id) === String(vehicle.id)
+                String(p.id) ===
+                String(vehicle.id)
             );
 
             return savedVehicle
@@ -58,53 +106,107 @@ export default function Booking() {
                   ...savedVehicle
                 }
               : vehicle;
-
           });
 
-          // Custom vehicles
-          const customVehicles = parsed.filter(
-            (saved) =>
-              !defaultList.some(
-                (vehicle) =>
-                  String(vehicle.id) ===
-                  String(saved.id)
-              )
-          );
+          const customVehicles =
+            parsed.filter(
+              (saved) =>
+                !defaultList.some(
+                  (vehicle) =>
+                    String(vehicle.id) ===
+                    String(saved.id)
+                )
+            );
 
           currentList = [
             ...currentList,
             ...customVehicles
           ];
         }
-
-      } catch (error) {
-
-        console.error(
-          'LocalStorage error:',
-          error
-        );
-
       }
+    } catch (error) {
+      console.error(
+        'Cars/Bikes LocalStorage error:',
+        error
+      );
     }
 
+    // =========================
+    // LOAD ADMIN FLEET VEHICLES
+    // =========================
+    try {
+      const fleetData =
+        localStorage.getItem('fleetVehicles');
+
+      if (fleetData) {
+        const fleetVehicles =
+          JSON.parse(fleetData);
+
+        if (Array.isArray(fleetVehicles)) {
+          const correctTypeVehicles =
+            fleetVehicles.filter((vehicle) => {
+              const vehicleType =
+                String(
+                  vehicle.type ||
+                    vehicle.vehicleType ||
+                    ''
+                ).toLowerCase();
+
+              return (
+                vehicleType ===
+                String(type).toLowerCase()
+              );
+            });
+
+          correctTypeVehicles.forEach(
+            (fleetVehicle) => {
+              const existingIndex =
+                currentList.findIndex(
+                  (vehicle) =>
+                    String(vehicle.id) ===
+                    String(fleetVehicle.id)
+                );
+
+              if (existingIndex >= 0) {
+                currentList[existingIndex] = {
+                  ...currentList[existingIndex],
+                  ...fleetVehicle
+                };
+              } else {
+                currentList.push(
+                  fleetVehicle
+                );
+              }
+            }
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        'Fleet vehicles error:',
+        error
+      );
+    }
+
+    // =========================
+    // FIND VEHICLE
+    // =========================
     const found = currentList.find(
       (vehicle) =>
-        String(vehicle.id) === String(id)
+        String(vehicle.id) ===
+        String(id)
     );
 
     setItem(found || null);
-
   }, [type, id]);
 
-
   // =========================
-  // CALCULATE TOTAL
+  // CALCULATE PRICE
   // =========================
-
   useEffect(() => {
-
     if (!startDate || !endDate || !item) {
       setTotalAmount(0);
+      setTotalDays(0);
       return;
     }
 
@@ -112,49 +214,111 @@ export default function Booking() {
     const end = new Date(endDate);
 
     const diffTime =
-      end.getTime() - start.getTime();
+      end.getTime() -
+      start.getTime();
 
     const diffDays =
       Math.ceil(
         diffTime /
-        (1000 * 60 * 60 * 24)
+          (1000 * 60 * 60 * 24)
       ) + 1;
 
     if (diffDays > 0) {
-
       const priceNumber =
         parseInt(
-          String(item.price)
-            .replace(/[^0-9]/g, '')
+          String(item.price || 0).replace(
+            /[^0-9]/g,
+            ''
+          )
         ) || 0;
 
+      setTotalDays(diffDays);
       setTotalAmount(
         diffDays * priceNumber
       );
-
     } else {
-
+      setTotalDays(0);
       setTotalAmount(0);
-
     }
-
   }, [startDate, endDate, item]);
 
+  // =========================
+  // GET PRICE
+  // =========================
+  const getPrice = () => {
+    return (
+      parseInt(
+        String(item?.price || 0).replace(
+          /[^0-9]/g,
+          ''
+        )
+      ) || 0
+    );
+  };
+
+  // =========================
+  // VEHICLE SPECS
+  // =========================
+  const getSeats = () => {
+    return (
+      item?.seats ||
+      item?.specs?.seats ||
+      item?.capacity ||
+      5
+    );
+  };
+
+  const getFuel = () => {
+    return (
+      item?.fuel ||
+      item?.specs?.fuel ||
+      'Petrol'
+    );
+  };
+
+  const getMileage = () => {
+    return (
+      item?.mileage ||
+      item?.specs?.mileage ||
+      'N/A'
+    );
+  };
+
+  const getTransmission = () => {
+    return (
+      item?.transmission ||
+      item?.specs?.transmission ||
+      'Manual'
+    );
+  };
+
+  // =========================
+  // TODAY
+  // =========================
+  const today = new Date()
+    .toISOString()
+    .split('T')[0];
 
   // =========================
   // CONFIRM BOOKING
   // =========================
-
   const handleConfirmBooking = async (e) => {
-
     e.preventDefault();
 
+    // =========================
+    // VALIDATION
+    // =========================
     if (!startDate || !endDate) {
-
       alert(
-        'Please select both Start Date and End Date!'
+        'Please select Pickup Date and Return Date!'
       );
+      return;
+    }
 
+    if (startDate < today) {
+      alert(
+        'Pickup Date cannot be before today!'
+      );
       return;
     }
 
@@ -162,96 +326,130 @@ export default function Booking() {
       new Date(startDate) >
       new Date(endDate)
     ) {
-
       alert(
-        'End Date cannot be earlier than Start Date!'
+        'Return Date cannot be earlier than Pickup Date!'
       );
+      return;
+    }
 
+    if (!pickupLocation.trim()) {
+      alert(
+        'Please enter Pickup Location!'
+      );
+      return;
+    }
+
+    if (!fullName.trim()) {
+      alert(
+        'Please enter your Full Name!'
+      );
+      return;
+    }
+
+    if (!email.trim()) {
+      alert(
+        'Please enter your Email Address!'
+      );
+      return;
+    }
+
+    if (!phone.trim()) {
+      alert(
+        'Please enter your Phone Number!'
+      );
+      return;
+    }
+
+    if (!city.trim()) {
+      alert(
+        'Please enter your City!'
+      );
+      return;
+    }
+
+    if (!state.trim()) {
+      alert(
+        'Please enter your State!'
+      );
+      return;
+    }
+
+    if (!zipCode.trim()) {
+      alert(
+        'Please enter ZIP / Postal Code!'
+      );
       return;
     }
 
     if (!item) {
-
       alert('Vehicle not found!');
+      return;
+    }
 
+    if (item.isBooked) {
+      alert(
+        'This vehicle is already booked.'
+      );
       return;
     }
 
     setLoading(true);
 
     try {
-
+      // =========================
+      // CALCULATE DAYS
+      // =========================
       const start = new Date(startDate);
       const end = new Date(endDate);
 
       const diffTime =
-        end.getTime() - start.getTime();
+        end.getTime() -
+        start.getTime();
 
-      const totalDays =
+      const calculatedDays =
         Math.ceil(
           diffTime /
-          (1000 * 60 * 60 * 24)
+            (1000 * 60 * 60 * 24)
         ) + 1;
 
+      const priceNumber = getPrice();
+
+      const calculatedTotal =
+        calculatedDays * priceNumber;
 
       // =========================
-      // GET USER DETAILS
+      // CLEAN EMAIL
       // =========================
+      const cleanEmail =
+        email.trim().toLowerCase();
 
-      let userEmail = 'guest@gmail.com';
-      let userName = 'Guest User';
-
-      try {
-
-        const savedUser =
-          localStorage.getItem('user');
-
-        if (savedUser) {
-
-          const user =
-            JSON.parse(savedUser);
-
-          userEmail =
-            user.email ||
-            user.username ||
-            'guest@gmail.com';
-
-          userName =
-            user.name ||
-            user.username ||
-            'Guest User';
-        }
-
-      } catch (error) {
-
-        console.log(
-          'User data not found'
-        );
-
-      }
-
+      // =========================
+      // BOOKING ID
+      // =========================
+      let bookingId =
+        'BKG_' + Date.now();
 
       // =========================
       // SEND TO FASTAPI
       // =========================
-
-      let bookingId = 'BKG_' + Date.now();
-
       try {
-
         const response = await fetch(
           `${API_URL}/api/bookings`,
           {
             method: 'POST',
-
             headers: {
               'Content-Type':
                 'application/json'
             },
-
             body: JSON.stringify({
+              user_email:
+                cleanEmail,
 
-              user_email: userEmail,
+              user_name:
+                fullName.trim(),
+
+              phone:
+                phone.trim(),
 
               vehicle_id:
                 String(item.id),
@@ -262,38 +460,205 @@ export default function Booking() {
               vehicle_type:
                 type,
 
+              image:
+                item.image ||
+                FALLBACK_IMAGE,
+
               start_date:
                 startDate,
 
               end_date:
                 endDate,
 
+              pickup_location:
+                pickupLocation.trim(),
+
+              city:
+                city.trim(),
+
+              state:
+                state.trim(),
+
+              zip_code:
+                zipCode.trim(),
+
               total_days:
-                totalDays,
+                calculatedDays,
+
+              rate_per_day:
+                priceNumber,
 
               total_price:
-                totalAmount
+                calculatedTotal,
 
+              // PAYMENT
+              status:
+                'Pending Payment',
+
+              payment_status:
+                'Pending',
+
+              booking_status:
+                'Pending Payment'
             })
           }
         );
 
         if (response.ok) {
-          const data = await response.json();
+          const data =
+            await response.json();
+
           if (data.booking_id) {
-            bookingId = data.booking_id;
+            bookingId =
+              data.booking_id;
           }
         }
-
       } catch (err) {
-        console.log('Backend offline, using local storage backup.');
+        console.log(
+          'Backend offline, using local storage backup.'
+        );
       }
 
+      // =========================
+      // COMPLETE BOOKING OBJECT
+      // =========================
+      const newBookingObj = {
+        bookingId:
+          bookingId,
+
+        userEmail:
+          cleanEmail,
+
+        userName:
+          fullName.trim(),
+
+        phone:
+          phone.trim(),
+
+        vehicleId:
+          String(item.id),
+
+        vehicleName:
+          item.name,
+
+        vehicleType:
+          type,
+
+        image:
+          item.image ||
+          FALLBACK_IMAGE,
+
+        startDate:
+          startDate,
+
+        endDate:
+          endDate,
+
+        pickupLocation:
+          pickupLocation.trim(),
+
+        city:
+          city.trim(),
+
+        state:
+          state.trim(),
+
+        zipCode:
+          zipCode.trim(),
+
+        totalDays:
+          calculatedDays,
+
+        ratePerDay:
+          priceNumber,
+
+        totalAmount:
+          calculatedTotal,
+
+        // =========================
+        // PAYMENT STATUS
+        // =========================
+        status:
+          'Pending Payment',
+
+        paymentStatus:
+          'Pending',
+
+        bookingStatus:
+          'Pending Payment',
+
+        paymentId:
+          null,
+
+        paidAt:
+          null,
+
+        createdAt:
+          new Date().toISOString()
+      };
 
       // =========================
-      // UPDATE LOCAL STORAGE
+      // SAVE FOR ADMIN
       // =========================
+      const existingAdminBookings =
+        JSON.parse(
+          localStorage.getItem(
+            'allBookings'
+          ) || '[]'
+        );
 
+      localStorage.setItem(
+        'allBookings',
+        JSON.stringify([
+          newBookingObj,
+          ...existingAdminBookings
+        ])
+      );
+
+      // =========================
+      // SAVE FOR USER
+      // =========================
+      const userKey =
+        `userBookings_${cleanEmail}`;
+
+      const existingUserBookings =
+        JSON.parse(
+          localStorage.getItem(
+            userKey
+          ) || '[]'
+        );
+
+      localStorage.setItem(
+        userKey,
+        JSON.stringify([
+          newBookingObj,
+          ...existingUserBookings
+        ])
+      );
+
+      // =========================
+      // ALSO UPDATE OLD userBookings
+      // =========================
+      const oldUserBookings =
+        JSON.parse(
+          localStorage.getItem(
+            'userBookings'
+          ) || '[]'
+        );
+
+      localStorage.setItem(
+        'userBookings',
+        JSON.stringify([
+          newBookingObj,
+          ...oldUserBookings
+        ])
+      );
+
+      // =========================
+      // UPDATE VEHICLE STATUS
+      // IMPORTANT:
+      // PAYMENT SE PEHLE BOOKED NAHI
+      // =========================
       const listKey =
         type === 'car'
           ? 'rentEasyCarsList'
@@ -307,88 +672,64 @@ export default function Booking() {
       let savedList = [];
 
       try {
-
         const saved =
-          localStorage.getItem(listKey);
+          localStorage.getItem(
+            listKey
+          );
 
-        savedList =
-          saved
-            ? JSON.parse(saved)
-            : [];
-
+        savedList = saved
+          ? JSON.parse(saved)
+          : [];
       } catch (error) {
-
         savedList = [];
-
       }
 
-
       const updatedList =
-        defaultList.map((vehicle) => {
+        defaultList.map(
+          (vehicle) => {
+            const savedVehicle =
+              savedList.find(
+                (saved) =>
+                  String(saved.id) ===
+                  String(vehicle.id)
+              );
 
-          const savedVehicle =
-            savedList.find(
-              (saved) =>
-                String(saved.id) ===
-                String(vehicle.id)
-            );
+            const finalVehicle =
+              savedVehicle
+                ? {
+                    ...vehicle,
+                    ...savedVehicle
+                  }
+                : {
+                    ...vehicle
+                  };
 
-          const finalVehicle =
-            savedVehicle
-              ? {
-                  ...vehicle,
-                  ...savedVehicle
-                }
-              : {
-                  ...vehicle
-                };
+            if (
+              String(vehicle.id) ===
+              String(item.id)
+            ) {
+              return {
+                ...finalVehicle,
 
+                // PAYMENT SE PEHLE
+                // VEHICLE AVAILABLE
+                isBooked: false,
 
-          if (
-            String(vehicle.id) ===
-            String(item.id)
-          ) {
+                status:
+                  'available',
 
-            return {
+                bookingDetails:
+                  newBookingObj
+              };
+            }
 
-              ...finalVehicle,
-
-              isBooked: true,
-
-              status: 'booked',
-
-              bookingDetails: {
-
-                userEmail: userEmail.trim().toLowerCase(),
-
-                userName: userName,
-
-                startDate,
-
-                endDate,
-
-                totalAmount,
-
-                totalDays,
-
-                bookingId: bookingId,
-
-                status: 'pending',
-
-                image: item.image
-
-              }
-
-            };
-
+            return finalVehicle;
           }
+        );
 
-          return finalVehicle;
-
-        });
-
-
-      // Custom vehicles
+      // =========================
+      // CUSTOM VEHICLES
+      // =========================
       const customVehicles =
         savedList.filter(
           (saved) =>
@@ -399,7 +740,9 @@ export default function Booking() {
             )
         );
 
-
+      // =========================
+      // UPDATE RENT EASY LIST
+      // =========================
       localStorage.setItem(
         listKey,
         JSON.stringify([
@@ -408,8 +751,70 @@ export default function Booking() {
         ])
       );
 
+      // =========================
+      // UPDATE FLEET VEHICLES
+      // PAYMENT SE PEHLE AVAILABLE
+      // =========================
+      try {
+        const fleetData =
+          localStorage.getItem(
+            'fleetVehicles'
+          );
 
-      // Refresh Cars/Bikes page
+        if (fleetData) {
+          const fleetVehicles =
+            JSON.parse(fleetData);
+
+          if (
+            Array.isArray(
+              fleetVehicles
+            )
+          ) {
+            const updatedFleet =
+              fleetVehicles.map(
+                (vehicle) => {
+                  if (
+                    String(
+                      vehicle.id
+                    ) ===
+                    String(item.id)
+                  ) {
+                    return {
+                      ...vehicle,
+
+                      isBooked:
+                        false,
+
+                      status:
+                        'available',
+
+                      bookingDetails:
+                        newBookingObj
+                    };
+                  }
+
+                  return vehicle;
+                }
+              );
+
+            localStorage.setItem(
+              'fleetVehicles',
+              JSON.stringify(
+                updatedFleet
+              )
+            );
+          }
+        }
+      } catch (error) {
+        console.error(
+          'Fleet update error:',
+          error
+        );
+      }
+
+      // =========================
+      // REFRESH COMPONENTS
+      // =========================
       window.dispatchEvent(
         new Event(
           type === 'car'
@@ -418,17 +823,29 @@ export default function Booking() {
         )
       );
 
-
-      alert(
-        `Booking Confirmed Successfully!\nTotal: Rs ${totalAmount}`
+      window.dispatchEvent(
+        new Event(
+          'fleetVehiclesUpdated'
+        )
       );
 
+      window.dispatchEvent(
+        new Event(
+          'bookingsUpdated'
+        )
+      );
 
-      navigate('/my-bookings');
-
+      // =========================
+      // GO TO PAYMENT
+      // =========================
+      navigate('/payment', {
+        state: {
+          booking:
+            newBookingObj
+        }
+      });
 
     } catch (error) {
-
       console.error(
         'Booking error:',
         error
@@ -437,310 +854,1175 @@ export default function Booking() {
       alert(
         `Booking failed: ${error.message}`
       );
-
     } finally {
-
       setLoading(false);
-
     }
-
   };
-
 
   // =========================
   // ITEM NOT FOUND
   // =========================
-
   if (!item) {
-
     return (
-
       <div
         style={{
-          textAlign: 'center',
-          padding: '3rem'
+          minHeight: '100vh',
+          background: '#000',
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          padding: '30px'
         }}
       >
-
         <h2>
-          Item not found!
+          Vehicle not found!
         </h2>
 
+        <button
+          onClick={() =>
+            navigate(-1)
+          }
+          style={{
+            marginTop: '15px',
+            padding:
+              '10px 20px',
+            border: 'none',
+            borderRadius:
+              '8px',
+            background:
+              '#ff8a00',
+            color: '#fff',
+            cursor:
+              'pointer'
+          }}
+        >
+          ← Go Back
+        </button>
       </div>
-
     );
-
   }
-
 
   // =========================
   // UI
   // =========================
-
   return (
-
     <div
       style={{
-        maxWidth: '600px',
-        margin: '3rem auto',
-        padding: '2rem',
-        border: '1px solid #ddd',
-        borderRadius: '8px',
-        background: '#fff',
-        boxShadow:
-          '0 4px 12px rgba(0,0,0,0.1)'
+        minHeight: '100vh',
+        background: '#000',
+        color: '#fff',
+        padding: '20px',
+        boxSizing: 'border-box'
       }}
     >
-
-      <h2
-        style={{
-          textAlign: 'center',
-          marginBottom: '1.5rem',
-          color: '#333'
-        }}
-      >
-        Complete Your Booking
-      </h2>
-
-
       <div
         style={{
-          textAlign: 'center',
-          marginBottom: '1.5rem'
+          maxWidth: '1050px',
+          margin: '0 auto'
         }}
       >
 
-        <img
-          src={item.image}
-          alt={item.name}
+        {/* =======================
+            BACK BUTTON
+        ======================= */}
+        <button
+          type="button"
+          onClick={() =>
+            navigate(-1)
+          }
           style={{
-            width: '100%',
-            maxHeight: '250px',
-            objectFit: 'cover',
-            borderRadius: '6px'
-          }}
-        />
-
-
-        <h3
-          style={{
-            margin: '15px 0 5px',
-            fontSize: '1.5rem',
-            color: '#333'
-          }}
-        >
-          {item.name}
-        </h3>
-
-
-        <p
-          style={{
-            color: '#28a745',
-            fontSize: '1.2rem',
-            fontWeight: 'bold'
+            width: '42px',
+            height: '42px',
+            borderRadius:
+              '50%',
+            border: 'none',
+            background:
+              '#17202b',
+            color:
+              '#ff8a00',
+            fontSize:
+              '22px',
+            cursor:
+              'pointer',
+            marginBottom:
+              '15px'
           }}
         >
-          {item.price}
-        </p>
+          ←
+        </button>
 
-
-        {item.specs && (
-
-          <p
-            style={{
-              color: '#666',
-              fontSize: '0.95rem'
-            }}
-          >
-
-            Model:
-            {item.specs.model}
-            {' | '}
-
-            Fuel:
-            {item.specs.fuel}
-            {' | '}
-
-            Transmission:
-            {item.specs.transmission}
-
-          </p>
-
-        )}
-
-      </div>
-
-
-      {item.isBooked ? (
-
+        {/* =======================
+            MAIN GRID
+        ======================= */}
         <div
           style={{
-            background: '#f8d7da',
-            color: '#721c24',
-            padding: '1rem',
-            borderRadius: '6px',
-            textAlign: 'center',
-            fontWeight: 'bold'
+            display: 'grid',
+            gridTemplateColumns:
+              'minmax(0, 1.7fr) minmax(340px, 0.9fr)',
+            gap: '25px',
+            alignItems:
+              'start'
           }}
         >
 
-          This vehicle is already booked.
+          {/* =====================
+              LEFT SIDE
+          ===================== */}
+          <div>
 
-        </div>
-
-      ) : (
-
-        <form
-          onSubmit={
-            handleConfirmBooking
-          }
-        >
-
-          <div
-            style={{
-              marginBottom: '1rem'
-            }}
-          >
-
-            <label
-              style={{
-                display: 'block',
-                fontWeight: 'bold',
-                marginBottom: '5px',
-                color: '#333'
-              }}
-            >
-              Start Date:
-            </label>
-
-
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) =>
-                setStartDate(
-                  e.target.value
-                )
-              }
-              required
-              style={{
-                width: '100%',
-                padding: '0.6rem',
-                boxSizing:
-                  'border-box',
-                borderRadius: '4px',
-                border:
-                  '1px solid #ccc'
-              }}
-            />
-
-          </div>
-
-
-          <div
-            style={{
-              marginBottom: '1rem'
-            }}
-          >
-
-            <label
-              style={{
-                display: 'block',
-                fontWeight: 'bold',
-                marginBottom: '5px',
-                color: '#333'
-              }}
-            >
-              End Date:
-            </label>
-
-
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) =>
-                setEndDate(
-                  e.target.value
-                )
-              }
-              required
-              style={{
-                width: '100%',
-                padding: '0.6rem',
-                boxSizing:
-                  'border-box',
-                borderRadius: '4px',
-                border:
-                  '1px solid #ccc'
-              }}
-            />
-
-          </div>
-
-
-          {totalAmount > 0 && (
-
+            {/* VEHICLE IMAGE */}
             <div
               style={{
-                marginBottom: '1.5rem',
-                padding: '10px',
-                background: '#e9ecef',
-                borderRadius: '4px',
-                textAlign: 'center',
-                fontSize: '1.1rem',
-                fontWeight: 'bold',
-                color: '#333'
+                background:
+                  '#111820',
+                border:
+                  '1px solid #202b38',
+                borderRadius:
+                  '14px',
+                overflow:
+                  'hidden',
+                position:
+                  'relative'
               }}
             >
+              <img
+                src={
+                  item.image ||
+                  FALLBACK_IMAGE
+                }
+                alt={item.name}
+                onError={(e) => {
+                  e.currentTarget.src =
+                    FALLBACK_IMAGE;
+                }}
+                style={{
+                  width: '100%',
+                  height: '310px',
+                  objectFit:
+                    'cover',
+                  display:
+                    'block'
+                }}
+              />
 
-              Total Amount:
+              <div
+                style={{
+                  position:
+                    'absolute',
+                  right: '15px',
+                  bottom: '15px',
+                  width: '11px',
+                  height: '11px',
+                  borderRadius:
+                    '50%',
+                  background:
+                    '#ff8500'
+                }}
+              />
+            </div>
+
+            {/* VEHICLE NAME */}
+            <h1
+              style={{
+                margin:
+                  '18px 0 5px',
+                fontSize:
+                  '28px',
+                color:
+                  '#ff8500'
+              }}
+            >
+              {item.name}
+            </h1>
+
+            {/* PRICE */}
+            <div
+              style={{
+                fontSize:
+                  '24px',
+                fontWeight:
+                  'bold',
+                color:
+                  '#20d77a',
+                marginBottom:
+                  '20px'
+              }}
+            >
+              Rs {getPrice()}
 
               <span
                 style={{
-                  color: '#28a745'
+                  fontSize:
+                    '14px',
+                  color:
+                    '#aaa',
+                  marginLeft:
+                    '6px'
                 }}
               >
-                {' '}
-                Rs {totalAmount}
+                / day
               </span>
-
             </div>
 
-          )}
+            {/* ===================
+                VEHICLE SPECS
+            =================== */}
+            <div
+              style={{
+                display:
+                  'grid',
+                gridTemplateColumns:
+                  'repeat(4, 1fr)',
+                gap:
+                  '12px'
+              }}
+            >
 
+              {/* SEATS */}
+              <div
+                style={{
+                  background:
+                    '#111a23',
+                  border:
+                    '1px solid #263342',
+                  borderRadius:
+                    '10px',
+                  padding:
+                    '18px 10px',
+                  textAlign:
+                    'center'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      '22px'
+                  }}
+                >
+                  👤
+                </div>
 
-          <button
-            type="submit"
-            disabled={loading}
+                <div
+                  style={{
+                    color:
+                      '#8993a1',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '6px'
+                  }}
+                >
+                  Seats
+                </div>
+
+                <strong>
+                  {getSeats()}
+                </strong>
+              </div>
+
+              {/* FUEL */}
+              <div
+                style={{
+                  background:
+                    '#111a23',
+                  border:
+                    '1px solid #263342',
+                  borderRadius:
+                    '10px',
+                  padding:
+                    '18px 10px',
+                  textAlign:
+                    'center'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      '22px'
+                  }}
+                >
+                  ⛽
+                </div>
+
+                <div
+                  style={{
+                    color:
+                      '#8993a1',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '6px'
+                  }}
+                >
+                  Fuel
+                </div>
+
+                <strong>
+                  {getFuel()}
+                </strong>
+              </div>
+
+              {/* MILEAGE */}
+              <div
+                style={{
+                  background:
+                    '#111a23',
+                  border:
+                    '1px solid #263342',
+                  borderRadius:
+                    '10px',
+                  padding:
+                    '18px 10px',
+                  textAlign:
+                    'center'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      '22px'
+                  }}
+                >
+                  ◉
+                </div>
+
+                <div
+                  style={{
+                    color:
+                      '#8993a1',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '6px'
+                  }}
+                >
+                  Mileage
+                </div>
+
+                <strong>
+                  {getMileage()}
+                </strong>
+              </div>
+
+              {/* TRANSMISSION */}
+              <div
+                style={{
+                  background:
+                    '#111a23',
+                  border:
+                    '1px solid #263342',
+                  borderRadius:
+                    '10px',
+                  padding:
+                    '18px 10px',
+                  textAlign:
+                    'center'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize:
+                      '22px'
+                  }}
+                >
+                  ⚙
+                </div>
+
+                <div
+                  style={{
+                    color:
+                      '#8993a1',
+                    fontSize:
+                      '12px',
+                    marginTop:
+                      '6px'
+                  }}
+                >
+                  Transmission
+                </div>
+
+                <strong>
+                  {getTransmission()}
+                </strong>
+              </div>
+            </div>
+
+            {/* ===================
+                ABOUT CAR
+            =================== */}
+            <div
+              style={{
+                marginTop:
+                  '20px',
+                background:
+                  '#111a23',
+                border:
+                  '1px solid #263342',
+                borderRadius:
+                  '10px',
+                padding:
+                  '20px'
+              }}
+            >
+              <h2
+                style={{
+                  marginTop: 0
+                }}
+              >
+                About this{' '}
+                {type === 'car'
+                  ? 'car'
+                  : 'bike'}
+              </h2>
+
+              <p
+                style={{
+                  color:
+                    '#aeb6c2',
+                  lineHeight:
+                    '1.6'
+                }}
+              >
+                {item.description ||
+                  `Experience a comfortable and reliable journey with ${item.name}. This vehicle is available for rental and can be booked by selecting your pickup and return dates.`}
+              </p>
+            </div>
+          </div>
+
+          {/* =====================
+              RIGHT BOOKING CARD
+          ===================== */}
+          <div
             style={{
-              width: '100%',
-              padding: '0.8rem',
-              background: loading
-                ? '#6c757d'
-                : '#28a745',
-              color: '#fff',
-              border: 'none',
-              borderRadius: '4px',
-              fontSize: '1.1rem',
-              fontWeight: 'bold',
-              cursor: loading
-                ? 'not-allowed'
-                : 'pointer'
+              background:
+                '#111a23',
+              border:
+                '1px solid #263342',
+              borderRadius:
+                '14px',
+              padding:
+                '20px',
+              position:
+                'sticky',
+              top: '20px'
             }}
           >
 
-            {loading
-              ? 'Confirming Booking...'
-              : 'Confirm & Rent Now'}
+            <h2
+              style={{
+                margin:
+                  '0 0 5px',
+                fontSize:
+                  '21px'
+              }}
+            >
+              Reserve{' '}
+              <span
+                style={{
+                  color:
+                    '#ff8500'
+                }}
+              >
+                Your Drive
+              </span>
+            </h2>
 
-          </button>
+            <p
+              style={{
+                color:
+                  '#8993a1',
+                fontSize:
+                  '13px',
+                marginBottom:
+                  '20px'
+              }}
+            >
+              Fast · Secure · Easy
+            </p>
 
-        </form>
+            {item.isBooked ? (
 
-      )}
+              <div
+                style={{
+                  background:
+                    '#3b1b20',
+                  border:
+                    '1px solid #762f39',
+                  color:
+                    '#ff9aa5',
+                  padding:
+                    '15px',
+                  borderRadius:
+                    '8px',
+                  textAlign:
+                    'center',
+                  fontWeight:
+                    'bold'
+                }}
+              >
+                This vehicle is already booked.
+              </div>
 
+            ) : (
+
+              <form
+                onSubmit={
+                  handleConfirmBooking
+                }
+              >
+
+                {/* =================
+                    DATES
+                ================= */}
+                <div
+                  style={{
+                    display:
+                      'grid',
+                    gridTemplateColumns:
+                      '1fr 1fr',
+                    gap: '10px',
+                    marginBottom:
+                      '14px'
+                  }}
+                >
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      Pickup Date
+                    </label>
+
+                    <input
+                      type="date"
+                      min={today}
+                      value={
+                        startDate
+                      }
+                      onChange={(e) =>
+                        setStartDate(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      Return Date
+                    </label>
+
+                    <input
+                      type="date"
+                      min={
+                        startDate ||
+                        today
+                      }
+                      value={
+                        endDate
+                      }
+                      onChange={(e) =>
+                        setEndDate(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* =================
+                    PICKUP LOCATION
+                ================= */}
+                <div
+                  style={{
+                    marginBottom:
+                      '14px'
+                  }}
+                >
+                  <label
+                    style={{
+                      display:
+                        'block',
+                      color:
+                        '#aeb6c2',
+                      fontSize:
+                        '12px',
+                      marginBottom:
+                        '6px'
+                    }}
+                  >
+                    Pickup Location
+                  </label>
+
+                  <input
+                    type="text"
+                    placeholder="Enter pickup location"
+                    value={
+                      pickupLocation
+                    }
+                    onChange={(e) =>
+                      setPickupLocation(
+                        e.target.value
+                      )
+                    }
+                    required
+                    style={{
+                      width:
+                        '100%',
+                      boxSizing:
+                        'border-box',
+                      padding:
+                        '11px',
+                      background:
+                        '#151e28',
+                      color:
+                        '#fff',
+                      border:
+                        '1px solid #334152',
+                      borderRadius:
+                        '7px',
+                      outline:
+                        'none'
+                    }}
+                  />
+                </div>
+
+                {/* =================
+                    FULL NAME
+                ================= */}
+                <div
+                  style={{
+                    marginBottom:
+                      '14px'
+                  }}
+                >
+                  <label
+                    style={{
+                      display:
+                        'block',
+                      color:
+                        '#aeb6c2',
+                      fontSize:
+                        '12px',
+                      marginBottom:
+                        '6px'
+                    }}
+                  >
+                    Full Name
+                  </label>
+
+                  <input
+                    type="text"
+                    placeholder="Your full name"
+                    value={
+                      fullName
+                    }
+                    onChange={(e) =>
+                      setFullName(
+                        e.target.value
+                      )
+                    }
+                    required
+                    style={{
+                      width:
+                        '100%',
+                      boxSizing:
+                        'border-box',
+                      padding:
+                        '11px',
+                      background:
+                        '#151e28',
+                      color:
+                        '#fff',
+                      border:
+                        '1px solid #334152',
+                      borderRadius:
+                        '7px',
+                      outline:
+                        'none'
+                    }}
+                  />
+                </div>
+
+                {/* =================
+                    EMAIL + PHONE
+                ================= */}
+                <div
+                  style={{
+                    display:
+                      'grid',
+                    gridTemplateColumns:
+                      '1fr 1fr',
+                    gap: '10px',
+                    marginBottom:
+                      '14px'
+                  }}
+                >
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      Email Address
+                    </label>
+
+                    <input
+                      type="email"
+                      placeholder="Your email"
+                      value={
+                        email
+                      }
+                      onChange={(e) =>
+                        setEmail(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      Phone Number
+                    </label>
+
+                    <input
+                      type="tel"
+                      placeholder="Your phone number"
+                      value={
+                        phone
+                      }
+                      onChange={(e) =>
+                        setPhone(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* =================
+                    CITY STATE ZIP
+                ================= */}
+                <div
+                  style={{
+                    display:
+                      'grid',
+                    gridTemplateColumns:
+                      '1fr 1fr 0.9fr',
+                    gap: '10px',
+                    marginBottom:
+                      '16px'
+                  }}
+                >
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      City
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Your city"
+                      value={
+                        city
+                      }
+                      onChange={(e) =>
+                        setCity(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      State
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="Your state"
+                      value={
+                        state
+                      }
+                      onChange={(e) =>
+                        setState(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      style={{
+                        display:
+                          'block',
+                        color:
+                          '#aeb6c2',
+                        fontSize:
+                          '12px',
+                        marginBottom:
+                          '6px'
+                      }}
+                    >
+                      ZIP Code
+                    </label>
+
+                    <input
+                      type="text"
+                      placeholder="ZIP / Postal"
+                      value={
+                        zipCode
+                      }
+                      onChange={(e) =>
+                        setZipCode(
+                          e.target.value
+                        )
+                      }
+                      required
+                      style={{
+                        width:
+                          '100%',
+                        boxSizing:
+                          'border-box',
+                        padding:
+                          '11px',
+                        background:
+                          '#151e28',
+                        color:
+                          '#fff',
+                        border:
+                          '1px solid #334152',
+                        borderRadius:
+                          '7px',
+                        outline:
+                          'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* =================
+                    PRICE SUMMARY
+                ================= */}
+                <div
+                  style={{
+                    background:
+                      '#1a2532',
+                    border:
+                      '1px solid #344255',
+                    borderRadius:
+                      '8px',
+                    padding:
+                      '12px',
+                    marginBottom:
+                      '14px'
+                  }}
+                >
+
+                  <div
+                    style={{
+                      display:
+                        'flex',
+                      justifyContent:
+                        'space-between',
+                      color:
+                        '#b8c0cc',
+                      fontSize:
+                        '13px',
+                      marginBottom:
+                        '8px'
+                    }}
+                  >
+                    <span>
+                      Rate/day
+                    </span>
+
+                    <span>
+                      Rs {getPrice()}
+                    </span>
+                  </div>
+
+                  {totalDays > 0 && (
+                    <div
+                      style={{
+                        display:
+                          'flex',
+                        justifyContent:
+                          'space-between',
+                        color:
+                          '#b8c0cc',
+                        fontSize:
+                          '13px',
+                        marginBottom:
+                          '8px'
+                      }}
+                    >
+                      <span>
+                        Total Days
+                      </span>
+
+                      <span>
+                        {totalDays}
+                      </span>
+                    </div>
+                  )}
+
+                  <div
+                    style={{
+                      display:
+                        'flex',
+                      justifyContent:
+                        'space-between',
+                      color:
+                        '#fff',
+                      fontWeight:
+                        'bold',
+                      fontSize:
+                        '15px',
+                      paddingTop:
+                        '8px',
+                      borderTop:
+                        '1px solid #3b4654'
+                    }}
+                  >
+                    <span>
+                      Total
+                    </span>
+
+                    <span
+                      style={{
+                        color:
+                          '#20d77a'
+                      }}
+                    >
+                      Rs {totalAmount}
+                    </span>
+                  </div>
+                </div>
+
+                {/* =================
+                    PAYMENT BUTTON
+                ================= */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width:
+                      '100%',
+                    padding:
+                      '13px',
+                    border:
+                      'none',
+                    borderRadius:
+                      '7px',
+                    background:
+                      loading
+                        ? '#555'
+                        : '#ff8500',
+                    color:
+                      '#fff',
+                    fontSize:
+                      '15px',
+                    fontWeight:
+                      'bold',
+                    cursor:
+                      loading
+                        ? 'not-allowed'
+                        : 'pointer',
+                    transition:
+                      '0.2s'
+                  }}
+                >
+                  {loading
+                    ? 'Preparing Payment...'
+                    : '▣  Proceed to Payment'}
+                </button>
+
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
-
   );
-
 }
