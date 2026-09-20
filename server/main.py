@@ -24,6 +24,8 @@ from pathlib import Path
 
 import stripe
 from bson import ObjectId
+from dotenv import load_dotenv
+load_dotenv()
 
 
 app = FastAPI()
@@ -195,7 +197,7 @@ stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -203,11 +205,12 @@ app.add_middleware(
 
 
 # MONGODB
+# MONGODB
 client = AsyncIOMotorClient(
-    "mongodb://localhost:27017"
+    os.getenv("MONGO_URI")
 )
 
-db = client["rental_car_db"]
+db = client[os.getenv("DB_NAME", "rental_car_db")]
 
 admins_collection = db["admins"]
 users_collection = db["users"]
