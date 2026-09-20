@@ -15,48 +15,59 @@ export default function Navbar() {
     navigate('/login');
   };
 
+  const [isDarkTheme, setIsDarkTheme] = React.useState(() => {
+    const saved = localStorage.getItem('appTheme');
+    return saved !== 'light'; // default dark
+  });
+
+  const toggleTheme = () => {
+    const newTheme = !isDarkTheme;
+    setIsDarkTheme(newTheme);
+    localStorage.setItem('appTheme', newTheme ? 'dark' : 'light');
+    document.body.className = newTheme ? 'dark-theme' : 'light-theme';
+  };
+
+  React.useEffect(() => {
+    document.body.className = isDarkTheme ? 'dark-theme' : 'light-theme';
+  }, [isDarkTheme]);
+
   return (
-    <nav style={{ 
-      display: 'flex', 
-      justifyContent: 'space-between', 
-      alignItems: 'center', 
-      padding: '15px 40px', 
-      backgroundColor: '#0e1424', 
-      borderBottom: '1px solid #1f2937',
-      color: '#fff'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Link to="/" style={{ textDecoration: 'none', color: '#fff', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{ background: '#2563eb', padding: '8px', borderRadius: '8px', color: '#fff', fontWeight: 'bold' }}>🚗</div>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', letterSpacing: '0.5px' }}>RIDE EASY</h2>
+    <nav className="site-nav">
+      <div className="site-nav-inner">
+      <div className="site-nav-brand">
+        <Link to="/">
+          <div className="site-nav-logo">🚗</div>
+          <h2 className="site-nav-title">RIDE EASY</h2>
         </Link>
       </div>
 
-      <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-        <Link to="/cars" style={{ color: '#cbd5e1', textDecoration: 'none', fontSize: '0.95rem', fontWeight: '500' }}>Cars</Link>
-        <Link to="/bikes" style={{ color: '#cbd5e1', textDecoration: 'none', fontSize: '0.95rem', fontWeight: '500' }}>Bikes</Link>
+      <div className="site-nav-links">
+        <Link to="/cars">Cars</Link>
+        <Link to="/bikes">Bikes</Link>
         
         {isLoggedIn ? (
           <>
-            <Link to="/my-bookings" style={{ color: '#cbd5e1', textDecoration: 'none', fontSize: '0.95rem', fontWeight: '500' }}>My Bookings</Link>
-            <Link to="/profile" style={{ color: '#cbd5e1', textDecoration: 'none', fontSize: '0.95rem', fontWeight: '500' }}>Profile</Link>
+            <button className="site-nav-theme" onClick={toggleTheme} title="Toggle Theme">
+              {isDarkTheme ? '☀️' : '🌙'}
+            </button>
+            <Link to="/wallet">Wallet</Link>
+            <Link to="/my-bookings">My Bookings</Link>
+            <Link to="/profile">Profile</Link>
             {userRole === 'admin' && (
-              <Link to="/admin" style={{ color: '#38bdf8', textDecoration: 'none', fontSize: '0.95rem', fontWeight: '600' }}>Admin Dashboard</Link>
+              <Link to="/admin" className="site-nav-user">Admin Dashboard</Link>
             )}
-            <span style={{ color: '#38bdf8', fontSize: '0.9rem', marginLeft: '10px' }}>Hi, {userName}</span>
-            <button 
-              onClick={handleLogout} 
-              style={{ padding: '6px 14px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}
-            >
+            <span className="site-nav-user">Hi, {userName}</span>
+            <button className="site-nav-action site-nav-logout" onClick={handleLogout}>
               Logout
             </button>
           </>
         ) : (
           <>
-            <Link to="/login" style={{ padding: '6px 14px', background: 'transparent', color: '#38bdf8', border: '1px solid #38bdf8', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem' }}>Login</Link>
-            <Link to="/register" style={{ padding: '6px 14px', background: '#2563eb', color: '#fff', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem' }}>Register</Link>
+            <Link to="/login" className="site-nav-action site-nav-login">Login</Link>
+            <Link to="/register" className="site-nav-action site-nav-register">Register</Link>
           </>
         )}
+      </div>
       </div>
     </nav>
   );

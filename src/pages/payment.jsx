@@ -8,22 +8,13 @@ import {
 } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 
-const API_URL = 'http://localhost:8000';
-
-// =====================================================
-// STRIPE PUBLISHABLE KEY
-// IMPORTANT:
-// Yahan sirf Stripe PUBLISHABLE key (pk_test_...) rakho.
-// Secret key (sk_test_...) frontend me KABHI mat rakho.
-// =====================================================
+const API_URL = 'http://127.0.0.1:8000';
 
 const stripePromise = loadStripe(
   'pk_test_51U8au0RpTYjY22GQmZBP4Nl3Fpm1ViqKc3uar6MXnNOxWFDZuY9nFu5zg7ngNfI7at0QRheOiLaBshU6lEWcURXy00webCuwwb'
 );
 
-// =====================================================
 // PAYMENT FORM
-// =====================================================
 
 function CheckoutForm({ booking }) {
   const stripe = useStripe();
@@ -32,10 +23,6 @@ function CheckoutForm({ booking }) {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-
-  // =====================================================
-  // HANDLE PAYMENT
-  // =====================================================
 
   const handlePayment = async (e) => {
     e.preventDefault();
@@ -48,35 +35,21 @@ function CheckoutForm({ booking }) {
     setMessage('');
 
     try {
-      // =================================================
-      // STRIPE PAYMENT CONFIRM
-      // =================================================
-
       const { error, paymentIntent } =
         await stripe.confirmPayment({
           elements,
           redirect: 'if_required'
         });
 
-      // =================================================
-      // STRIPE ERROR
-      // =================================================
-
       if (error) {
         console.error('Stripe Payment Error:', error);
-
         setMessage(
           error.message ||
             'Payment failed. Please try again.'
         );
-
         setLoading(false);
         return;
       }
-
-      // =================================================
-      // PAYMENT SUCCESS
-      // =================================================
 
       if (
         paymentIntent &&
@@ -84,31 +57,25 @@ function CheckoutForm({ booking }) {
       ) {
         const paidAt = new Date().toISOString();
 
-        // =================================================
-        // UPDATED BOOKING OBJECT
-        // =================================================
-
         const paidBooking = {
           ...booking,
           paymentStatus: 'Paid',
-          bookingStatus: 'Confirmed',
-          status: 'Confirmed',
+          bookingStatus: 'Payment Received',
+          status: 'Payment Received',
           paymentId: paymentIntent.id,
           paidAt: paidAt
         };
 
-        // =================================================
-        // UPDATE BOOKING IN MONGODB
-        // =================================================
+        const currentBookingId = booking?.bookingId || booking?._id;
 
-        if (!booking?.bookingId) {
+        if (!currentBookingId) {
           throw new Error(
             'Booking ID is missing. Cannot update booking.'
           );
         }
 
         const dbResponse = await fetch(
-          `${API_URL}/api/bookings/${booking.bookingId}/payment`,
+          `${API_URL}/api/bookings/${currentBookingId}/payment`,
           {
             method: 'PUT',
             headers: {
@@ -116,16 +83,12 @@ function CheckoutForm({ booking }) {
             },
             body: JSON.stringify({
               payment_status: 'Paid',
-              booking_status: 'Confirmed',
+              booking_status: 'Payment Received',
               payment_id: paymentIntent.id,
               paid_at: paidAt
             })
           }
         );
-
-        // =================================================
-        // DATABASE ERROR
-        // =================================================
 
         if (!dbResponse.ok) {
           const dbError = await dbResponse
@@ -138,17 +101,13 @@ function CheckoutForm({ booking }) {
           );
         }
 
-        // =================================================
-        // UPDATE ALL BOOKINGS IN LOCALSTORAGE
-        // =================================================
-
         const allBookings = JSON.parse(
           localStorage.getItem('allBookings') || '[]'
         );
 
         const updatedAllBookings = allBookings.map((b) =>
-          String(b.bookingId) ===
-          String(booking.bookingId)
+          String(b.bookingId || b._id) ===
+          String(currentBookingId)
             ? paidBooking
             : b
         );
@@ -158,25 +117,20 @@ function CheckoutForm({ booking }) {
           JSON.stringify(updatedAllBookings)
         );
 
-        // =================================================
-        // UPDATE USER BOOKINGS
-        // =================================================
-
         const userEmail = booking?.userEmail
           ?.trim()
           .toLowerCase();
 
         if (userEmail) {
           const userKey = `userBookings_${userEmail}`;
-
           const userBookings = JSON.parse(
             localStorage.getItem(userKey) || '[]'
           );
 
           const updatedUserBookings =
             userBookings.map((b) =>
-              String(b.bookingId) ===
-              String(booking.bookingId)
+              String(b.bookingId || b._id) ===
+              String(currentBookingId)
                 ? paidBooking
                 : b
             );
@@ -187,18 +141,14 @@ function CheckoutForm({ booking }) {
           );
         }
 
-        // =================================================
-        // UPDATE NORMAL USER BOOKINGS
-        // =================================================
-
         const normalUserBookings = JSON.parse(
           localStorage.getItem('userBookings') || '[]'
         );
 
         const updatedNormalUserBookings =
           normalUserBookings.map((b) =>
-            String(b.bookingId) ===
-            String(booking.bookingId)
+            String(b.bookingId || b._id) ===
+            String(currentBookingId)
               ? paidBooking
               : b
           );
@@ -208,10 +158,6 @@ function CheckoutForm({ booking }) {
           JSON.stringify(updatedNormalUserBookings)
         );
 
-        // =================================================
-        // REFRESH ADMIN / USER PAGES
-        // =================================================
-
         window.dispatchEvent(
           new Event('bookingsUpdated')
         );
@@ -220,19 +166,29 @@ function CheckoutForm({ booking }) {
           new Event('paymentUpdated')
         );
 
-        // =================================================
-        // SUCCESS MESSAGE
-        // =================================================
+        try {
+          await fetch(`${API_URL}/api/notifications/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              booking_id: currentBookingId,
+              user_email: booking?.userEmail || '',
+              type: 'payment_success',
+              title: 'Payment Successful',
+              message: `Payment of Rs ${booking.totalAmount} received successfully for your booking.`,
+              channel: 'email'
+            })
+          });
+        } catch (notificationError) {
+          console.error('Notification send failed:', notificationError);
+        }
 
         alert(
           'Payment Successful!\n\n' +
             `Amount: Rs ${booking.totalAmount}\n` +
-            `Booking ID: ${booking.bookingId}`
+            `Booking ID: ${currentBookingId}\n\n` +
+            'Your booking will be confirmed by our admin shortly.'
         );
-
-        // =================================================
-        // GO TO MY BOOKINGS
-        // =================================================
 
         navigate('/my-bookings');
       } else {
@@ -242,7 +198,6 @@ function CheckoutForm({ booking }) {
       }
     } catch (error) {
       console.error('Payment Error:', error);
-
       setMessage(
         error?.message ||
           'Something went wrong while processing payment.'
@@ -252,10 +207,6 @@ function CheckoutForm({ booking }) {
     setLoading(false);
   };
 
-  // =====================================================
-  // PAYMENT FORM UI
-  // =====================================================
-
   return (
     <form
       onSubmit={handlePayment}
@@ -263,8 +214,6 @@ function CheckoutForm({ booking }) {
         marginTop: '20px'
       }}
     >
-      {/* STRIPE PAYMENT ELEMENT */}
-
       <div
         style={{
           background: '#fff',
@@ -275,8 +224,6 @@ function CheckoutForm({ booking }) {
       >
         <PaymentElement />
       </div>
-
-      {/* ERROR MESSAGE */}
 
       {message && (
         <div
@@ -292,8 +239,6 @@ function CheckoutForm({ booking }) {
           {message}
         </div>
       )}
-
-      {/* PAY BUTTON */}
 
       <button
         type="submit"
@@ -321,33 +266,20 @@ function CheckoutForm({ booking }) {
   );
 }
 
-// =====================================================
 // PAYMENT PAGE
-// =====================================================
 
 export default function Payment() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // =====================================================
-  // GET BOOKING
-  // =====================================================
-
-  const booking =
-    location.state?.booking;
+  const booking = location.state?.booking;
 
   const [clientSecret, setClientSecret] =
     useState('');
-
   const [loading, setLoading] =
     useState(true);
-
   const [error, setError] =
     useState('');
-
-  // =====================================================
-  // CREATE PAYMENT INTENT
-  // =====================================================
 
   useEffect(() => {
     if (!booking) {
@@ -357,39 +289,13 @@ export default function Payment() {
 
     const createPayment = async () => {
       try {
-        console.log(
-          'PAYMENT BOOKING:',
-          booking
-        );
+        const currentBookingId = booking?.bookingId || booking?._id;
 
-        console.log(
-          'BOOKING ID:',
-          booking?.bookingId
-        );
-
-        console.log(
-          'TOTAL AMOUNT:',
-          booking?.totalAmount
-        );
-
-        console.log(
-          'EMAIL:',
-          booking?.userEmail
-        );
-
-        // =================================================
-        // VALIDATE BOOKING ID
-        // =================================================
-
-        if (!booking?.bookingId) {
+        if (!currentBookingId) {
           throw new Error(
             'Booking ID is missing.'
           );
         }
-
-        // =================================================
-        // VALIDATE AMOUNT
-        // =================================================
 
         if (
           !booking?.totalAmount ||
@@ -400,33 +306,24 @@ export default function Payment() {
           );
         }
 
-        // =================================================
-        // CREATE PAYMENT INTENT
-        // =================================================
-
         const response = await fetch(
           `${API_URL}/api/create-payment-intent`,
           {
             method: 'POST',
-
             headers: {
               'Content-Type': 'application/json'
             },
-
             body: JSON.stringify({
-              booking_id: booking.bookingId,
+              booking_id: currentBookingId,
               amount: Number(
                 booking.totalAmount
               ),
+              security_deposit: Number(booking.securityDeposit || booking.security_deposit || 0),
               currency: 'inr',
               email: booking.userEmail || ''
             })
           }
         );
-
-        // =================================================
-        // CHECK SERVER RESPONSE
-        // =================================================
 
         if (!response.ok) {
           const errorData =
@@ -440,21 +337,7 @@ export default function Payment() {
           );
         }
 
-        // =================================================
-        // GET RESPONSE DATA
-        // =================================================
-
-        const data =
-          await response.json();
-
-        console.log(
-          'PAYMENT INTENT RESPONSE:',
-          data
-        );
-
-        // =================================================
-        // CLIENT SECRET CHECK
-        // =================================================
+        const data = await response.json();
 
         if (!data.client_secret) {
           throw new Error(
@@ -470,7 +353,6 @@ export default function Payment() {
           'Payment setup error FULL:',
           err
         );
-
         setError(
           err?.message ||
             'Payment setup failed.'
@@ -482,10 +364,6 @@ export default function Payment() {
 
     createPayment();
   }, [booking]);
-
-  // =====================================================
-  // NO BOOKING
-  // =====================================================
 
   if (!booking) {
     return (
@@ -500,10 +378,7 @@ export default function Payment() {
           flexDirection: 'column'
         }}
       >
-        <h2>
-          No booking found
-        </h2>
-
+        <h2>No booking found</h2>
         <button
           onClick={() =>
             navigate('/my-bookings')
@@ -524,10 +399,6 @@ export default function Payment() {
     );
   }
 
-  // =====================================================
-  // LOADING
-  // =====================================================
-
   if (loading) {
     return (
       <div
@@ -540,16 +411,10 @@ export default function Payment() {
           alignItems: 'center'
         }}
       >
-        <h2>
-          Preparing Payment...
-        </h2>
+        <h2>Preparing Payment...</h2>
       </div>
     );
   }
-
-  // =====================================================
-  // ERROR
-  // =====================================================
 
   if (error) {
     return (
@@ -566,10 +431,7 @@ export default function Payment() {
           boxSizing: 'border-box'
         }}
       >
-        <h2>
-          Payment Error
-        </h2>
-
+        <h2>Payment Error</h2>
         <p
           style={{
             color: '#ff8b8b',
@@ -578,7 +440,6 @@ export default function Payment() {
         >
           {error}
         </p>
-
         <button
           onClick={() =>
             navigate(-1)
@@ -598,26 +459,16 @@ export default function Payment() {
     );
   }
 
-  // =====================================================
-  // STRIPE OPTIONS
-  // =====================================================
-
   const options = {
     clientSecret,
-
     appearance: {
       theme: 'stripe',
-
       variables: {
         colorPrimary: '#ff8500',
         borderRadius: '8px'
       }
     }
   };
-
-  // =====================================================
-  // PAYMENT PAGE UI
-  // =====================================================
 
   return (
     <div
@@ -635,8 +486,6 @@ export default function Payment() {
           margin: '0 auto'
         }}
       >
-        {/* BACK BUTTON */}
-
         <button
           onClick={() =>
             navigate(-1)
@@ -665,10 +514,6 @@ export default function Payment() {
             alignItems: 'start'
           }}
         >
-          {/* ==========================================
-              BOOKING SUMMARY
-          ========================================== */}
-
           <div>
             <div
               style={{
@@ -717,53 +562,32 @@ export default function Payment() {
                 }}
               >
                 <p>
-                  <strong>
-                    Pickup:
-                  </strong>{' '}
+                  <strong>Pickup:</strong>{' '}
                   {booking.startDate}
                 </p>
-
                 <p>
-                  <strong>
-                    Return:
-                  </strong>{' '}
+                  <strong>Return:</strong>{' '}
                   {booking.endDate}
                 </p>
-
                 <p>
-                  <strong>
-                    Days:
-                  </strong>{' '}
+                  <strong>Days:</strong>{' '}
                   {booking.totalDays}
                 </p>
-
                 <p>
-                  <strong>
-                    Pickup Location:
-                  </strong>{' '}
+                  <strong>Pickup Location:</strong>{' '}
                   {booking.pickupLocation}
                 </p>
-
                 <p>
-                  <strong>
-                    Customer:
-                  </strong>{' '}
+                  <strong>Customer:</strong>{' '}
                   {booking.userName}
                 </p>
-
                 <p>
-                  <strong>
-                    Email:
-                  </strong>{' '}
+                  <strong>Email:</strong>{' '}
                   {booking.userEmail}
                 </p>
               </div>
             </div>
           </div>
-
-          {/* ==========================================
-              PAYMENT
-          ========================================== */}
 
           <div
             style={{
@@ -798,8 +622,6 @@ export default function Payment() {
               Pay securely to confirm
               your booking.
             </p>
-
-            {/* STRIPE ELEMENTS */}
 
             {clientSecret && (
               <Elements

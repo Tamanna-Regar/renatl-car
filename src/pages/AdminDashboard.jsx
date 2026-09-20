@@ -1,7 +1,8 @@
 import { ListOrdered } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
+import LiveFleetControlTower from '../components/LiveFleetControlTower';
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const navigate = useNavigate();
@@ -18,15 +19,19 @@ export default function AdminDashboard() {
   });
 
   const [bookings, setBookings] = useState([]);
+  const [backendMaintenanceAlerts, setBackendMaintenanceAlerts] = useState([]);
+  const [analyticsSummary, setAnalyticsSummary] = useState(null);
+  const [branchAnalytics, setBranchAnalytics] = useState({ branches: [], total_revenue: 0 });
   const orders = bookings;
   const [overdueBookings, setOverdueBookings] = useState(() => {
   return JSON.parse(
     localStorage.getItem('overdueBookings') || '[]'
   );
 });
+const [historyBooking, setHistoryBooking] = useState(null);
+const [historySearchTerm, setHistorySearchTerm] = useState('');
 const [selectedBooking, setSelectedBooking] = useState(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-
+const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   useEffect(() => {
     const checkOverdueBookings = () => {
 
@@ -37,6 +42,53 @@ const [selectedBooking, setSelectedBooking] = useState(null);
       const overdueList = allBookings.filter((booking) => {
 
         if (!booking.endDate) return false;
+
+        const getBookingStatus = (booking) => {
+  if (!booking) return 'Upcoming';
+
+  const pickup =
+    booking.pickupDate ||
+    booking.startDate ||
+    booking.fromDate;
+
+  const returnDate =
+    booking.returnDate ||
+    booking.endDate ||
+    booking.toDate;
+
+  if (!pickup || !returnDate) {
+    return booking.status || 'Upcoming';
+  }
+
+  const pickupDate = new Date(`${pickup}T00:00:00`);
+  const endDate = new Date(`${returnDate}T00:00:00`);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Return date nikal chuki hai
+  if (today > endDate) {
+    return 'Closed';
+  }
+
+  // Aaj pickup aur return ke beech hai
+  if (today >= pickupDate && today <= endDate) {
+    return 'Running';
+  }
+
+  // Pickup future mein hai
+  if (today < pickupDate) {
+    if (
+      String(booking.status || '').toLowerCase() === 'confirmed'
+    ) {
+      return 'Confirmed';
+    }
+
+    return 'Upcoming';
+  }
+
+  return 'Upcoming';
+};
 
         // Sirf Confirmed bookings check hongi
         if (booking.status !== 'Confirmed') return false;
@@ -83,6 +135,18 @@ const [selectedBooking, setSelectedBooking] = useState(null);
 const [vehicles, setVehicles] = useState(() => {
   return JSON.parse(localStorage.getItem('fleetVehicles') || '[]');
 });
+const [maintenanceOrders, setMaintenanceOrders] = useState([]);
+const [maintenanceForm, setMaintenanceForm] = useState({
+vehicleId: '',
+vehicleName: '',
+vehicleType: 'car',
+issue: '',
+mechanic: '',
+scheduledDate: '',
+partsCost: '',
+labourCost: '',
+notes: ''
+});
 
 const [newVehicle, setNewVehicle] = useState({
   name: '',
@@ -94,9 +158,19 @@ const [newVehicle, setNewVehicle] = useState({
   transmission: 'Automatic',
   fuelType: 'Petrol',
   seatingCapacity: '',
+  engineCc: '',
+  mileageKmpl: '',
+  helmetIncluded: false,
+  helmetCount: '0',
+  batteryRangeKm: '',
   location: 'New York',
   description: '',
-  image: ''
+image: '',
+odometer: '',
+lastServiceKm: '',
+serviceIntervalKm: '5000',
+nextServiceDate: '',
+status: 'Available'
 });
 
 const [showAddModal, setShowAddModal] = useState(false);
@@ -187,92 +261,258 @@ const [verifications, setVerifications] = useState(() => {
     id: user.id,
     driverName: user.name,
     licenseNo: user.licenseNo || 'Not Provided',
-    docStatus: user.docStatus || 'Pending Review',
+    docStatus: user.docStatus || user.verificationStatus || 'Unverified',
     email: user.email,
     phone: user.phone,
+    documentUrl: user.documentUrl || '',
   }));
 });
   useEffect(() => {
-    // 1. Fetch Bookings from localStorage
-    const localBookings = JSON.parse(localStorage.getItem('allBookings') || '[]');
-    
-    // 2. Fetch Actual Cars and Bikes lists from storage
-    const savedBikes = JSON.parse(localStorage.getItem('rentEasyBikesList') || '[]');
-    const savedCars = JSON.parse(localStorage.getItem('rentEasyCarsList') || '[]');
-    const fleetVehicles = JSON.parse(localStorage.getItem('fleetVehicles') || '[]');
+    const loadDashboardData = async () => {
+      // 1. Fetch from localStorage
+      const localBookings = JSON.parse(localStorage.getItem('allBookings') || '[]');
+      const savedBikes = JSON.parse(localStorage.getItem('rentEasyBikesList') || '[]');
+      const savedCars = JSON.parse(localStorage.getItem('rentEasyCarsList') || '[]');
+      const fleetVehicles = JSON.parse(localStorage.getItem('fleetVehicles') || '[]');
 
-    const allCombinedFleet = [...fleetVehicles, ...savedCars, ...savedBikes];
-    
-    // Ensure every vehicle has a unique fallback ID if missing
-    const uniqueFleet = allCombinedFleet.map((item, idx) => ({
-      ...item,
-      uniqueId: item.id || item._id || `veh-${idx}`
-    }));
-
-    setVehicles(uniqueFleet);
-    
-    let combinedBookings = [...localBookings];
-
-    [...savedBikes, ...savedCars].forEach(item => {
-      // 🔴 'item.isBooked' check ko yahan se hata ya flexible kar diya hai 
-      // taaki agar vehicle rejected ya available bhi ho jaye, tab bhi booking details history me bani rahe.
-      if (item.bookingDetails) {
-        const exists = combinedBookings.some(b => b.vehicleName === item.name);
-        if (!exists) {
-          combinedBookings.push({
-            userEmail: item.bookingDetails.userEmail || 'user@gmail.com',
-            vehicleName: item.name,
-            startDate: item.bookingDetails.startDate,
-            endDate: item.bookingDetails.endDate,
-            status: item.bookingDetails.status || 'Pending',
-            rejectionReason: item.bookingDetails.rejectionReason || '' // 👈 Yeh line rejection reason ko capture karegi
-          });
+      // 2. Also try fetching from MongoDB backend
+      let backendBookings = [];
+      let backendVehicles = [];
+      try {
+        const [bRes, vRes, alertsRes] = await Promise.all([
+          fetch('http://127.0.0.1:8000/api/bookings'),
+          fetch('http://127.0.0.1:8000/api/vehicles'),
+          fetch('http://127.0.0.1:8000/api/fleet-health/alerts')
+        ]);
+        if (bRes.ok) {
+          const bData = await bRes.json();
+          backendBookings = Array.isArray(bData) ? bData : (bData.bookings || []);
+          // Normalize backend booking fields
+          backendBookings = backendBookings.map(b => ({
+            ...b,
+            vehicleName: b.vehicleName || b.vehicle_name,
+            vehicleType: b.vehicleType || b.vehicle_type,
+            startDate: b.startDate || b.start_date,
+            endDate: b.endDate || b.end_date,
+            totalPrice: b.totalPrice || b.total_price,
+            userEmail: b.userEmail || b.user_email,
+          }));
         }
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          backendVehicles = Array.isArray(vData) ? vData : (vData.vehicles || []);
+        }
+        if (alertsRes.ok) {
+          const alertsData = await alertsRes.json();
+          setBackendMaintenanceAlerts(Array.isArray(alertsData.alerts) ? alertsData.alerts : []);
+        }
+      } catch (e) {
+        // Backend unavailable, use localStorage only
       }
-    });
 
-    setBookings(combinedBookings);
+      // 3. Tag local cars/bikes with type if missing
+      const taggedCars = savedCars.map(c => ({ ...c, type: c.type || 'car' }));
+      const taggedBikes = savedBikes.map(b => ({ ...b, type: b.type || 'bike' }));
+      const taggedFleet = fleetVehicles.map(v => ({ ...v, type: v.type || 'car' }));
+      const taggedBackend = backendVehicles.map(v => ({ ...v, type: v.type || 'car' }));
 
-    // 3. Automatic Count Calculation based on confirmed bookings
-    const totalCarsCount = uniqueFleet.filter(v => v.type && v.type.toLowerCase() === 'car').length;
-    const totalBikesCount = uniqueFleet.filter(v => v.type && v.type.toLowerCase() === 'bike').length;
+      const allCombinedFleet = [...taggedFleet, ...taggedCars, ...taggedBikes, ...taggedBackend];
+      const uniqueFleet = allCombinedFleet.map((item, idx) => ({
+        ...item,
+        uniqueId: item.id || item._id || `veh-${idx}`
+      }));
 
-    const rentedCarsCount = combinedBookings.filter(b => {
-      const isCar = uniqueFleet.some(v => v.name === b.vehicleName && v.type && v.type.toLowerCase() === 'car');
-      return isCar && b.status === 'Confirmed';
-    }).length;
+      setVehicles(uniqueFleet);
+      try {
+        const maintenanceResponse = await fetch('http://127.0.0.1:8000/api/admin/maintenance');
+        if (maintenanceResponse.ok) {
+          const maintenanceData = await maintenanceResponse.json();
+          setMaintenanceOrders(maintenanceData.work_orders || []);
+        }
+      } catch (error) {
+        console.error('Maintenance work orders sync failed:', error);
+      }
 
-    const rentedBikesCount = combinedBookings.filter(b => {
-      const isBike = uniqueFleet.some(v => v.name === b.vehicleName && v.type && v.type.toLowerCase() === 'bike');
-      return isBike && b.status === 'Confirmed';
-    }).length;
+      // 4. Combine all bookings (remove duplicates by vehicleName+startDate)
+      let combinedBookings = [...localBookings, ...backendBookings];
 
-    const availableCarsCount = Math.max(0, totalCarsCount - rentedCarsCount);
-    const availableBikesCount = Math.max(0, totalBikesCount - rentedBikesCount);
+      [...taggedCars, ...taggedBikes].forEach(item => {
+        if (item.bookingDetails) {
+          const exists = combinedBookings.some(b => b.vehicleName === item.name);
+          if (!exists) {
+            combinedBookings.push({
+              userEmail: item.bookingDetails.userEmail || 'user@gmail.com',
+              vehicleName: item.name,
+              vehicleType: item.type,
+              startDate: item.bookingDetails.startDate,
+              endDate: item.bookingDetails.endDate,
+              totalPrice: item.bookingDetails.totalPrice || 0,
+              status: item.bookingDetails.status || 'Pending',
+              rejectionReason: item.bookingDetails.rejectionReason || ''
+            });
+          }
+        }
+      });
 
-    const totalCount = totalCarsCount + totalBikesCount;
-    const totalRented = rentedCarsCount + rentedBikesCount;
-    const utilRate = totalCount > 0 ? ((totalRented / totalCount) * 100).toFixed(2) + '%' : '0%';
+      // Deduplicate
+      const seen = new Set();
+      combinedBookings = combinedBookings.filter(b => {
+        const key = `${b.vehicleName}-${b.startDate}-${b.userEmail || b.user_email}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
 
-    setStats({
-      totalCars: totalCarsCount,
-      availableCars: availableCarsCount,
-      rentedCars: rentedCarsCount,
-      totalBikes: totalBikesCount,
-      availableBikes: availableBikesCount,
-      rentedBikes: rentedBikesCount,
-      utilizationRate: utilRate
-    });
+      setBookings(combinedBookings);
 
-    // 4. Fetch Users
-    const localUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    setUsers(localUsers);
+      // 5. Stats Calculation
+      const totalCarsCount = uniqueFleet.filter(v => v.type && v.type.toLowerCase() === 'car').length;
+      const totalBikesCount = uniqueFleet.filter(v => v.type && v.type.toLowerCase() === 'bike').length;
+
+      const activeStatuses = ['confirmed', 'running', 'upcoming'];
+
+      const rentedCarsCount = combinedBookings.filter(b => {
+        const type = (b.vehicleType || b.vehicle_type || '').toLowerCase();
+        const status = (b.status || '').toLowerCase();
+        if (type === 'car') return activeStatuses.includes(status);
+        // fallback: match vehicle name from fleet
+        const isCar = uniqueFleet.some(v => v.name === b.vehicleName && v.type?.toLowerCase() === 'car');
+        return isCar && activeStatuses.includes(status);
+      }).length;
+
+      const rentedBikesCount = combinedBookings.filter(b => {
+        const type = (b.vehicleType || b.vehicle_type || '').toLowerCase();
+        const status = (b.status || '').toLowerCase();
+        if (type === 'bike') return activeStatuses.includes(status);
+        const isBike = uniqueFleet.some(v => v.name === b.vehicleName && v.type?.toLowerCase() === 'bike');
+        return isBike && activeStatuses.includes(status);
+      }).length;
+
+      const availableCarsCount = Math.max(0, totalCarsCount - rentedCarsCount);
+      const availableBikesCount = Math.max(0, totalBikesCount - rentedBikesCount);
+      const totalCount = totalCarsCount + totalBikesCount;
+      const totalRented = rentedCarsCount + rentedBikesCount;
+      const utilRate = totalCount > 0 ? ((totalRented / totalCount) * 100).toFixed(2) + '%' : '0%';
+
+      setStats({
+        totalCars: totalCarsCount,
+        availableCars: availableCarsCount,
+        rentedCars: rentedCarsCount,
+        totalBikes: totalBikesCount,
+        availableBikes: availableBikesCount,
+        rentedBikes: rentedBikesCount,
+        utilizationRate: utilRate
+      });
+
+      // 6. Analytics summary from backend
+      try {
+        const analyticsResponse = await fetch('http://127.0.0.1:8000/api/dashboard-stats');
+        if (analyticsResponse.ok) {
+          const analytics = await analyticsResponse.json();
+          setAnalyticsSummary(analytics);
+          setStats(prev => ({
+            ...prev,
+            totalCars: analytics.totalVehicles || prev.totalCars,
+            utilizationRate: analytics.utilizationRate || prev.utilizationRate,
+            rentedCars: analytics.activeRentals || prev.rentedCars,
+          }));
+        }
+      } catch (error) {
+        console.error('Analytics sync failed:', error);
+      }
+
+      // 7. Fetch Users
+      const localUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      setUsers(localUsers);
+    };
+
+    loadDashboardData();
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'revenue') return;
+    fetch('http://127.0.0.1:8000/api/admin/branch-analytics', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') || ''}` },
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Branch analytics unavailable')))
+      .then((data) => setBranchAnalytics(data))
+      .catch(() => setBranchAnalytics({ branches: [], total_revenue: 0 }));
   }, [activeTab]);
 
   const totalBookingsCount = bookings.length;
   const confirmedCount = bookings.filter(b => b.status === 'Confirmed').length;
   const pendingCount = bookings.filter(b => b.status === 'Pending' || !b.status).length;
   const rejectedCount = bookings.filter(b => b.status === 'Rejected').length;
+
+  const getVehicleHealth = (vehicle) => {
+    const odometer = Number(vehicle.odometer ?? vehicle.mileage ?? vehicle.kilometers ?? 0);
+    const serviceIntervalKm = Number(vehicle.serviceIntervalKm ?? vehicle.serviceInterval ?? 5000);
+    const lastServiceKm = Number(vehicle.lastServiceKm ?? Math.max(0, odometer - 2000));
+    const nextServiceDate = vehicle.nextServiceDate ? new Date(vehicle.nextServiceDate) : null;
+    const usageRatio = serviceIntervalKm > 0 ? Math.max(0, Math.min(1.2, (odometer - lastServiceKm) / serviceIntervalKm)) : 0;
+    const daysRemaining = nextServiceDate ? Math.ceil((nextServiceDate - new Date()) / 86400000) : 999;
+
+    let status = 'Healthy';
+    let score = '#22c55e';
+    let label = 'Good';
+    let healthScore = 100;
+    const issues = [];
+
+    const isMaintenance = String(vehicle.status || '').toLowerCase() === 'maintenance';
+    if (isMaintenance || usageRatio >= 0.85 || daysRemaining <= 7) {
+      status = 'Critical';
+      score = '#ef4444';
+      label = 'Service due';
+      issues.push('Immediate service attention required');
+    } else if (usageRatio >= 0.6 || daysRemaining <= 20) {
+      status = 'Warning';
+      score = '#f59e0b';
+      label = 'Monitor';
+      issues.push('Preventive maintenance should be scheduled');
+    }
+
+    if (usageRatio >= 0.85) healthScore -= 35;
+    else if (usageRatio >= 0.6) healthScore -= 18;
+    if (daysRemaining <= 7) healthScore -= 35;
+    else if (daysRemaining <= 20) healthScore -= 18;
+    if (isMaintenance) {
+      healthScore -= 25;
+      issues.push('Vehicle is marked for maintenance');
+    }
+
+    const recommendedAction = status === 'Critical'
+      ? 'Remove from rental inventory until serviced'
+      : status === 'Warning'
+        ? 'Schedule preventive maintenance'
+        : 'Keep in active rental rotation';
+
+    return { name: vehicle.name || vehicle.title || 'Vehicle', status, score, label, odometer, usageRatio, daysRemaining, healthScore: Math.max(0, healthScore), issues, recommendedAction };
+  };
+
+  const fleetHealthSummary = useMemo(() => {
+    const healthItems = vehicles.map(getVehicleHealth);
+    const localAlerts = healthItems
+      .filter(item => item.status !== 'Healthy')
+      .sort((a, b) => a.healthScore - b.healthScore);
+    return {
+      items: healthItems,
+      alerts: backendMaintenanceAlerts.length
+        ? backendMaintenanceAlerts.map(alert => ({
+          name: alert.vehicle,
+          status: alert.severity,
+          healthScore: alert.health_score,
+          issues: alert.issues,
+          recommendedAction: alert.recommended_action,
+        }))
+        : localAlerts,
+      healthy: healthItems.filter(item => item.status === 'Healthy').length,
+      warning: healthItems.filter(item => item.status === 'Warning').length,
+      critical: healthItems.filter(item => item.status === 'Critical').length,
+      total: healthItems.length,
+      averageScore: healthItems.length ? Math.round(healthItems.reduce((total, item) => total + item.healthScore, 0) / healthItems.length) : 0,
+    };
+  }, [vehicles, backendMaintenanceAlerts]);
+
   const parseCalendarDate = (value) => {
     if (!value) return null;
     const match = String(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
@@ -413,15 +653,84 @@ const [verifications, setVerifications] = useState(() => {
       }
     }
   };
-    // ---- Vehicle CRUD handlers (Vehicles Fleet tab ke liye) ----
+    const createMaintenanceOrder = async (event) => {
+      event.preventDefault();
+      const response = await fetch('http://127.0.0.1:8000/api/admin/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vehicle_id: maintenanceForm.vehicleId,
+          vehicle_name: maintenanceForm.vehicleName,
+          vehicle_type: maintenanceForm.vehicleType,
+          issue: maintenanceForm.issue,
+          mechanic: maintenanceForm.mechanic,
+          scheduled_date: maintenanceForm.scheduledDate,
+          parts_cost: Number(maintenanceForm.partsCost || 0),
+          labour_cost: Number(maintenanceForm.labourCost || 0),
+          notes: maintenanceForm.notes
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        alert(data.detail || 'Maintenance order could not be created.');
+        return;
+      }
+      setMaintenanceOrders((current) => [data.work_order, ...current]);
+      setVehicles((current) => current.map((vehicle) => (
+        vehicle.name === maintenanceForm.vehicleName ? { ...vehicle, status: 'Maintenance' } : vehicle
+      )));
+      setMaintenanceForm({ vehicleId: '', vehicleName: '', vehicleType: 'car', issue: '', mechanic: '', scheduledDate: '', partsCost: '', labourCost: '', notes: '' });
+    };
+
+    const updateMaintenanceOrder = async (order, status) => {
+      const response = await fetch(`http://127.0.0.1:8000/api/admin/maintenance/${order.work_order_id}?status=${status}`, { method: 'PATCH' });
+      if (!response.ok) return;
+      setMaintenanceOrders((current) => current.map((item) => item.work_order_id === order.work_order_id ? { ...item, status } : item));
+      if (status === 'completed') {
+        setVehicles((current) => current.map((vehicle) => vehicle.name === order.vehicle_name ? { ...vehicle, status: 'Available' } : vehicle));
+      }
+    };
+
+    // ---- Vehicle CRUD handlers 
   const handleAddVehicle = (e) => {
     e.preventDefault();
-    const vehicleToAdd = { ...newVehicle, id: Date.now(), uniqueId: `veh-${Date.now()}` };
+    const vehicleToAdd = {
+      ...newVehicle,
+      id: Date.now(),
+      uniqueId: `veh-${Date.now()}`,
+      odometer: Number(newVehicle.odometer || 0),
+      lastServiceKm: Number(newVehicle.lastServiceKm || 0),
+      serviceIntervalKm: Number(newVehicle.serviceIntervalKm || 5000),
+      nextServiceDate: newVehicle.nextServiceDate || '',
+      engineCc: Number(newVehicle.engineCc || 0),
+      mileageKmpl: Number(newVehicle.mileageKmpl || 0),
+      helmetIncluded: Boolean(newVehicle.helmetIncluded),
+      helmetCount: Number(newVehicle.helmetCount || 0),
+      batteryRangeKm: Number(newVehicle.batteryRangeKm || 0),
+      status: newVehicle.status || 'Available'
+    };
     const existingFleet = JSON.parse(localStorage.getItem('fleetVehicles') || '[]');
     const updatedFleet = [...existingFleet, vehicleToAdd];
     localStorage.setItem('fleetVehicles', JSON.stringify(updatedFleet));
     setVehicles(prev => [...prev, vehicleToAdd]);
-    setNewVehicle({ name: '', type: 'Car', pricePerDay: '', fuelType: 'Petrol', status: 'Available', description: '' });
+    setNewVehicle({
+      name: '',
+      type: 'Car',
+      pricePerDay: '',
+      fuelType: 'Petrol',
+      status: 'Available',
+      description: '',
+      image: '',
+      odometer: '',
+      lastServiceKm: '',
+      serviceIntervalKm: '5000',
+      nextServiceDate: '',
+      engineCc: '',
+      mileageKmpl: '',
+      helmetIncluded: false,
+      helmetCount: '0',
+      batteryRangeKm: ''
+    });
     setShowAddModal(false);
   };
 
@@ -446,8 +755,37 @@ const [verifications, setVerifications] = useState(() => {
   };
 
   // ---- Driver verification handler ----
-  const handleVerificationAction = (id, status) => {
-    setVerifications(prev => prev.map(v => (v.id === id ? { ...v, docStatus: status } : v)));
+  const handleVerificationAction = async (id, status) => {
+    const updatedVerifications = verifications.map(v => (v.id === id ? { ...v, docStatus: status } : v));
+    setVerifications(updatedVerifications);
+
+    const savedUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+    const targetUser = savedUsers.find(u => u.id === id);
+    if (targetUser) {
+      targetUser.docStatus = status;
+      targetUser.verificationStatus = status;
+      localStorage.setItem('registeredUsers', JSON.stringify(savedUsers));
+
+      // Check if it's the current user
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      if (currentUser.id === id || currentUser.email === targetUser.email) {
+         currentUser.docStatus = status;
+         currentUser.verificationStatus = status;
+         localStorage.setItem('user', JSON.stringify(currentUser));
+         window.dispatchEvent(new Event('profileUpdated'));
+      }
+
+      // Backend API sync
+      try {
+          await fetch(`http://127.0.0.1:8000/api/admin/users/${targetUser.email || targetUser.id}/verify`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status })
+          });
+      } catch (e) {
+          console.error("Verification API Error:", e);
+      }
+    }
   };
 
   // ---- Settings form handler ----
@@ -546,6 +884,39 @@ const [verifications, setVerifications] = useState(() => {
     transition: 'all 0.2s'
   });
 
+  const revenueData = useMemo(() => {
+    if (analyticsSummary?.monthlyRevenue && analyticsSummary.monthlyRevenue.length > 0) {
+      return analyticsSummary.monthlyRevenue.map(item => ({
+        name: item.name,
+        cars: item.revenue,
+        bikes: item.revenue * 0.35,
+      }));
+    }
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dataMap = {};
+    months.forEach(m => dataMap[m] = { name: m, cars: 0, bikes: 0 });
+    
+    bookings.forEach(b => {
+      const dateStr = b.startDate || b.bookingDetails?.startDate || b.createdAt;
+      if (!dateStr) return;
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return;
+      
+      const monthName = months[date.getMonth()];
+      const type = (b.vehicleType || b.bookingDetails?.vehicleType || '').toLowerCase();
+      const price = Number(b.totalPrice || b.bookingDetails?.totalPrice || 1000); // sum by revenue
+      
+      if (type === 'bike') {
+        dataMap[monthName].bikes += price;
+      } else {
+        dataMap[monthName].cars += price;
+      }
+    });
+    
+    return Object.values(dataMap);
+  }, [bookings, analyticsSummary]);
+
   return (
     <div style={{ display: 'flex', width: '100vw', minWidth: '100vw', height: '100vh', background: theme.pageBg, color: theme.textMuted, fontFamily: 'Segoe UI, sans-serif', overflow: 'hidden', transition: 'background 0.3s, color 0.3s', colorScheme: settings.darkTheme ? 'dark' : 'light', margin: 0, padding: 0, boxSizing: 'border-box', position: 'fixed', top: 0, left: 0 }}>
       
@@ -567,6 +938,7 @@ const [verifications, setVerifications] = useState(() => {
     
     <button onClick={() => setActiveTab('dashboard')} style={navBtnStyle(activeTab === 'dashboard')}>📊 Dashboard</button>
     <button onClick={() => setActiveTab('vehicles')} style={navBtnStyle(activeTab === 'vehicles')}>🚙 Vehicles Fleet</button>
+    <button onClick={() => setActiveTab('maintenance')} style={navBtnStyle(activeTab === 'maintenance')}>🔧 Maintenance Work Orders</button>
     <button onClick={() => setActiveTab('bookings')} style={navBtnStyle(activeTab === 'bookings')}>📋 Bookings List</button>
     <button onClick={()=> setActiveTab('booking order')} style={navBtnStyle(activeTab === 'booking order')}>📝 Booking Order</button>
     <button onClick={()=> setActiveTab('booking history')} style={navBtnStyle(activeTab === 'booking history')}>📝 Booking history</button>
@@ -576,6 +948,7 @@ const [verifications, setVerifications] = useState(() => {
     <div style={{ fontSize: '0.7rem', color: theme.textSoft, fontWeight: 'bold', margin: '18px 0 8px 0', letterSpacing: '0.5px' }}>REPORTS & INSIGHTS</div>
     <button onClick={() => setActiveTab('revenue')} style={navBtnStyle(activeTab === 'revenue')}>📈 Revenue Analytics</button>
     <button onClick={() => setActiveTab('overdue')} style={navBtnStyle(activeTab === 'overdue')}>⚠️ Overdue Tracker</button>
+    <button onClick={() => setActiveTab('damage')} style={navBtnStyle(activeTab === 'damage')}>🚗 Damage Reports</button>
 
     <div style={{ fontSize: '0.7rem', color: theme.textSoft, fontWeight: 'bold', margin: '18px 0 8px 0', letterSpacing: '0.5px' }}>USER MANAGEMENT</div>
     <button onClick={() => setActiveTab('users')} style={navBtnStyle(activeTab === 'users')}>👥 Registered Users</button>
@@ -599,12 +972,14 @@ const [verifications, setVerifications] = useState(() => {
             {activeTab === 'dashboard' ? 'Dashboard'
   : activeTab === 'bookings' ? 'Bookings List'
   : activeTab === 'vehicles' ? 'Vehicles Fleet'
+  : activeTab === 'maintenance' ? 'Maintenance Work Orders'
   : activeTab === 'booking order' ? 'Booking Order'
   : activeTab === 'booking history' ? 'Booking History'
   : activeTab === 'booking status' ? 'Booking Status'
   : activeTab === 'extensions' ? 'Rental Extensions'
   : activeTab === 'revenue' ? 'Revenue Analytics'
   : activeTab === 'overdue' ? 'Overdue Tracker'
+  : activeTab === 'damage' ? 'Damage Reports'
   : activeTab === 'users' ? 'Registered Users'
   : activeTab === 'verification' ? 'Driver Verification'
   : activeTab === 'calendar' ? 'Calendar'
@@ -613,6 +988,19 @@ const [verifications, setVerifications] = useState(() => {
             </h1>
             <p style={{ fontSize: '0.85rem', color: theme.textSoft, margin: 0 }}>Manage active rentals, fleet health, and pending requests</p>
           </div>
+
+          {analyticsSummary && (
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: '10px', padding: '10px 14px', minWidth: '130px' }}>
+                <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Revenue</div>
+                <div style={{ fontSize: '1.05rem', color: theme.textPrimary, fontWeight: '700' }}>₹{Number(analyticsSummary.revenueTotal || 0).toLocaleString('en-IN')}</div>
+              </div>
+              <div style={{ background: theme.surface, border: `1px solid ${theme.border}`, borderRadius: '10px', padding: '10px 14px', minWidth: '130px' }}>
+                <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Cancelled</div>
+                <div style={{ fontSize: '1.05rem', color: theme.textPrimary, fontWeight: '700' }}>{analyticsSummary.cancelledBookings || 0}</div>
+              </div>
+            </div>
+          )}
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -646,6 +1034,91 @@ const [verifications, setVerifications] = useState(() => {
               </div>
             </div>
 
+            <LiveFleetControlTower theme={theme} />
+
+            <div style={{ background: theme.surface, padding: '18px 20px', borderRadius: '10px', marginBottom: '20px', border: `1px solid ${theme.divider}` }}>
+              <div style={{ color: theme.textPrimary, fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '10px' }}>🩺 Fleet Health Monitoring</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: '12px' }}>
+                <div style={{ background: theme.cardBg, padding: '12px', borderRadius: '8px', border: `1px solid ${theme.borderStrong}` }}>
+                  <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Healthy</div>
+                  <div style={{ fontSize: '1.3rem', color: '#22c55e', fontWeight: '700' }}>{fleetHealthSummary.healthy}</div>
+                </div>
+                <div style={{ background: theme.cardBg, padding: '12px', borderRadius: '8px', border: `1px solid ${theme.borderStrong}` }}>
+                  <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Warning</div>
+                  <div style={{ fontSize: '1.3rem', color: '#f59e0b', fontWeight: '700' }}>{fleetHealthSummary.warning}</div>
+                </div>
+                <div style={{ background: theme.cardBg, padding: '12px', borderRadius: '8px', border: `1px solid ${theme.borderStrong}` }}>
+                  <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Critical</div>
+                  <div style={{ fontSize: '1.3rem', color: '#ef4444', fontWeight: '700' }}>{fleetHealthSummary.critical}</div>
+                </div>
+                <div style={{ background: theme.cardBg, padding: '12px', borderRadius: '8px', border: `1px solid ${theme.borderStrong}` }}>
+                  <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Vehicles</div>
+                  <div style={{ fontSize: '1.3rem', color: theme.textPrimary, fontWeight: '700' }}>{fleetHealthSummary.total}</div>
+                </div>
+                <div style={{ background: theme.cardBg, padding: '12px', borderRadius: '8px', border: `1px solid ${theme.borderStrong}`, gridColumn: 'span 2' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '0.72rem', color: theme.textSoft }}>Average Health Score</div>
+                      <div style={{ fontSize: '1.3rem', color: fleetHealthSummary.averageScore >= 80 ? '#22c55e' : fleetHealthSummary.averageScore >= 60 ? '#f59e0b' : '#ef4444', fontWeight: '700' }}>{fleetHealthSummary.averageScore}/100</div>
+                    </div>
+                    <div style={{ flex: 1, maxWidth: '260px', height: '8px', borderRadius: '99px', background: theme.divider, overflow: 'hidden' }}>
+                      <div style={{ width: `${fleetHealthSummary.averageScore}%`, height: '100%', borderRadius: '99px', background: fleetHealthSummary.averageScore >= 80 ? '#22c55e' : fleetHealthSummary.averageScore >= 60 ? '#f59e0b' : '#ef4444' }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: theme.surface, padding: '18px 20px', borderRadius: '10px', marginBottom: '20px', border: `1px solid ${theme.divider}` }}>
+              <div style={{ color: theme.textPrimary, fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '10px' }}>Vehicle Health Priorities</div>
+              {fleetHealthSummary.items.length === 0 ? (
+                <div style={{ color: theme.textMuted, fontSize: '0.85rem' }}>No vehicle health data available.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {[...fleetHealthSummary.items].sort((a, b) => a.healthScore - b.healthScore).map((item, index) => {
+                    const healthColor = item.healthScore >= 80 ? '#22c55e' : item.healthScore >= 60 ? '#f59e0b' : '#ef4444';
+                    return (
+                      <div key={`${item.name}-${index}`} className="fleet-health-item" style={{ borderBottom: `1px solid ${theme.divider}` }}>
+                        <div>
+                          <div style={{ color: theme.textPrimary, fontWeight: '600', fontSize: '0.85rem' }}>{item.name}</div>
+                          <div style={{ color: theme.textMuted, fontSize: '0.72rem' }}>{item.label} · {item.odometer} km</div>
+                        </div>
+                        <div style={{ color: healthColor, fontWeight: '700' }}>{item.healthScore}/100</div>
+                        <div style={{ color: theme.textMuted, fontSize: '0.78rem' }}>
+                          <div>{item.issues.join(' · ')}</div>
+                          <div style={{ color: healthColor, marginTop: '4px', fontWeight: '600' }}>{item.recommendedAction}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: theme.surface, padding: '18px 20px', borderRadius: '10px', marginBottom: '20px', border: `1px solid ${theme.divider}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                <div style={{ color: theme.textPrimary, fontWeight: 'bold', fontSize: '0.95rem' }}>Smart Maintenance Alerts</div>
+                <span style={{ color: fleetHealthSummary.alerts.length ? '#f59e0b' : '#22c55e', fontSize: '0.78rem', fontWeight: '700' }}>
+                  {fleetHealthSummary.alerts.length ? `${fleetHealthSummary.alerts.length} action${fleetHealthSummary.alerts.length === 1 ? '' : 's'} needed` : 'All vehicles clear'}
+                </span>
+              </div>
+              {fleetHealthSummary.alerts.length === 0 ? (
+                <div style={{ color: theme.textMuted, fontSize: '0.85rem' }}>No urgent maintenance alerts right now.</div>
+              ) : (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {fleetHealthSummary.alerts.slice(0, 5).map((alert, index) => (
+                    <div key={`${alert.name}-${index}`} className={`maintenance-alert maintenance-alert-${alert.status.toLowerCase()}`}>
+                      <div>
+                        <strong>{alert.name}</strong>
+                        <div>{alert.issues.join(' · ')}</div>
+                      </div>
+                      <div className="maintenance-alert-action">{alert.recommendedAction}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '15px', marginBottom: '25px' }}>
               <div style={{ background: theme.cardBg, padding: '15px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
                 <div style={{ fontSize: '0.75rem', color: theme.textMuted, marginBottom: '8px' }}>Total Bookings</div>
@@ -674,6 +1147,47 @@ const [verifications, setVerifications] = useState(() => {
               </div>
             </div>
 
+            {/* ANALYTICS CHARTS (FEATURE 5) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '25px' }}>
+              <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+                <h3 style={{ color: theme.textPrimary, fontSize: '1rem', margin: '0 0 15px 0' }}>Revenue Over Time</h3>
+                <div style={{ width: '100%', height: '250px' }}>
+                  <ResponsiveContainer>
+                    <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorCars" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={theme.borderStrong} />
+                      <XAxis dataKey="name" stroke={theme.textMuted} fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke={theme.textMuted} fontSize={12} tickLine={false} axisLine={false} />
+                      <RechartsTooltip contentStyle={{ background: theme.surface, border: `1px solid ${theme.borderStrong}`, borderRadius: '8px', color: theme.textPrimary }} />
+                      <Area type="monotone" dataKey="cars" stroke="#3b82f6" fillOpacity={1} fill="url(#colorCars)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+              
+              <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+                <h3 style={{ color: theme.textPrimary, fontSize: '1rem', margin: '0 0 15px 0' }}>Rentals by Category</h3>
+                <div style={{ width: '100%', height: '250px' }}>
+                  <ResponsiveContainer>
+                    <BarChart data={revenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={theme.borderStrong} />
+                      <XAxis dataKey="name" stroke={theme.textMuted} fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke={theme.textMuted} fontSize={12} tickLine={false} axisLine={false} />
+                      <RechartsTooltip contentStyle={{ background: theme.surface, border: `1px solid ${theme.borderStrong}`, borderRadius: '8px', color: theme.textPrimary }} cursor={{ fill: 'transparent' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px' }} />
+                      <Bar dataKey="cars" name="Cars" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
+                      <Bar dataKey="bikes" name="Bikes" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
             <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
               <h3 style={{ color: theme.textPrimary, fontSize: '1rem', marginBottom: '15px' }}>Recent Bookings Summary</h3>
               {bookings.length === 0 ? (
@@ -695,6 +1209,47 @@ const [verifications, setVerifications] = useState(() => {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'maintenance' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 0.8fr) minmax(0, 1.2fr)', gap: '18px' }}>
+            <form onSubmit={createMaintenanceOrder} style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+              <h3 style={{ color: theme.textPrimary, marginTop: 0 }}>Create Service Work Order</h3>
+              <select required value={maintenanceForm.vehicleName} onChange={(event) => {
+                const vehicle = vehicles.find((item) => item.name === event.target.value);
+                setMaintenanceForm({ ...maintenanceForm, vehicleName: event.target.value, vehicleId: String(vehicle?.id || vehicle?._id || ''), vehicleType: vehicle?.type || 'car' });
+              }} style={{ width: '100%', padding: '10px', marginBottom: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }}>
+                <option value="">Select vehicle</option>
+                {vehicles.map((vehicle, index) => <option key={`${vehicle.name}-${index}`} value={vehicle.name}>{vehicle.name} ({vehicle.type || 'car'})</option>)}
+              </select>
+              <input required placeholder="Issue / service required" value={maintenanceForm.issue} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, issue: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', marginBottom: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+              <input placeholder="Mechanic / workshop" value={maintenanceForm.mechanic} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, mechanic: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', marginBottom: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+              <input required type="date" value={maintenanceForm.scheduledDate} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, scheduledDate: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', marginBottom: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <input type="number" min="0" placeholder="Parts cost" value={maintenanceForm.partsCost} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, partsCost: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+                <input type="number" min="0" placeholder="Labour cost" value={maintenanceForm.labourCost} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, labourCost: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', padding: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+              </div>
+              <textarea placeholder="Repair notes" value={maintenanceForm.notes} onChange={(event) => setMaintenanceForm({ ...maintenanceForm, notes: event.target.value })} style={{ width: '100%', boxSizing: 'border-box', minHeight: '90px', marginTop: '10px', padding: '10px', background: theme.inputBg, color: theme.inputText, border: `1px solid ${theme.borderStrong}`, borderRadius: '6px' }} />
+              <button type="submit" style={{ width: '100%', marginTop: '12px', padding: '11px', border: 0, borderRadius: '6px', background: '#2563eb', color: '#fff', fontWeight: 700 }}>Create Work Order</button>
+            </form>
+            <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+              <h3 style={{ color: theme.textPrimary, marginTop: 0 }}>Service History & Active Orders</h3>
+              {maintenanceOrders.length === 0 ? <p style={{ color: theme.textMuted }}>No maintenance work orders yet.</p> : maintenanceOrders.map((order) => (
+                <div key={order.work_order_id} style={{ padding: '12px 0', borderBottom: `1px solid ${theme.divider}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px' }}>
+                    <strong style={{ color: theme.textPrimary }}>{order.vehicle_name}</strong>
+                    <span style={{ color: order.status === 'completed' ? '#22c55e' : '#f59e0b', fontSize: '0.78rem', fontWeight: 700 }}>{order.status}</span>
+                  </div>
+                  <div style={{ color: theme.textMuted, fontSize: '0.8rem', margin: '5px 0' }}>{order.issue} · ₹{Number(order.total_cost || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ color: theme.textSoft, fontSize: '0.75rem' }}>Mechanic: {order.mechanic || 'Not assigned'} · Due: {order.scheduled_date}</div>
+                  <div style={{ display: 'flex', gap: '7px', marginTop: '8px' }}>
+                    {order.status === 'open' && <button onClick={() => updateMaintenanceOrder(order, 'in_progress')} style={{ padding: '5px 8px' }}>Start service</button>}
+                    {order.status === 'in_progress' && <button onClick={() => updateMaintenanceOrder(order, 'completed')} style={{ padding: '5px 8px' }}>Mark completed</button>}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -828,6 +1383,35 @@ const [verifications, setVerifications] = useState(() => {
                     </div>
 
                     <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>
+                        {newVehicle.type === 'Bike' ? 'Engine (CC)' : 'Mileage (km/l)'}
+                      </label>
+                      {newVehicle.type === 'Bike' ? (
+                        <input type="number" min="0" placeholder="e.g. 350" value={newVehicle.engineCc || ''} onChange={(e) => setNewVehicle({...newVehicle, engineCc: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                      ) : (
+                        <input type="number" min="0" step="0.1" placeholder="e.g. 18.5" value={newVehicle.mileageKmpl || ''} onChange={(e) => setNewVehicle({...newVehicle, mileageKmpl: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                      )}
+                    </div>
+
+                    <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Battery Range (km)</label>
+                      <input type="number" min="0" placeholder="For electric vehicles" value={newVehicle.batteryRangeKm || ''} onChange={(e) => setNewVehicle({...newVehicle, batteryRangeKm: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                    </div>
+
+                    {newVehicle.type === 'Bike' && (
+                      <>
+                        <div>
+                          <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Helmet Count</label>
+                          <input type="number" min="0" value={newVehicle.helmetCount || '0'} onChange={(e) => setNewVehicle({...newVehicle, helmetCount: e.target.value, helmetIncluded: Number(e.target.value) > 0})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: theme.textSecondary, fontSize: '0.8rem', alignSelf: 'end', paddingBottom: '11px' }}>
+                          <input type="checkbox" checked={newVehicle.helmetIncluded} onChange={(e) => setNewVehicle({...newVehicle, helmetIncluded: e.target.checked})} />
+                          Helmet included with rental
+                        </label>
+                      </>
+                    )}
+
+                    <div>
                       <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Location</label>
                       <select value={newVehicle.location || 'New York'} onChange={(e) => setNewVehicle({...newVehicle, location: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem' }}>
                         <option value="New York">New York</option>
@@ -844,6 +1428,26 @@ const [verifications, setVerifications] = useState(() => {
                         <option value="Rented">Rented</option>
                         <option value="Maintenance">Maintenance</option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Odometer (km)</label>
+                      <input type="number" min="0" value={newVehicle.odometer || ''} onChange={(e) => setNewVehicle({...newVehicle, odometer: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                    </div>
+
+                    <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Last Service (km)</label>
+                      <input type="number" min="0" value={newVehicle.lastServiceKm || ''} onChange={(e) => setNewVehicle({...newVehicle, lastServiceKm: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                    </div>
+
+                    <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Service Interval (km)</label>
+                      <input type="number" min="1000" value={newVehicle.serviceIntervalKm || '5000'} onChange={(e) => setNewVehicle({...newVehicle, serviceIntervalKm: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
+                    </div>
+
+                    <div>
+                      <label style={{ color: theme.textSecondary, fontSize: '0.8rem', fontWeight: '600', display: 'block', marginBottom: '7px' }}>Next Service Date</label>
+                      <input type="date" value={newVehicle.nextServiceDate || ''} onChange={(e) => setNewVehicle({...newVehicle, nextServiceDate: e.target.value})} style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', background: theme.inputBg, border: `1px solid ${theme.borderStrong}`, color: theme.inputText, borderRadius: '7px', fontSize: '0.88rem', outline: 'none' }} />
                     </div>
 
                     <div style={{ gridColumn: '1 / -1' }}>
@@ -1059,14 +1663,44 @@ const [verifications, setVerifications] = useState(() => {
             </div>
           </div>
         )}
-       {/* 3. BOOKINGS LIST TAB */}
+
+        {/* 3. BOOKINGS LIST TAB - PENDING & PAYMENT RECEIVED (Till Admin Confirms/Rejects) */}
+
 {activeTab === 'bookings' && (
-  <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
-    <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', marginBottom: '15px' }}>All User Bookings</h3>
+  <div
+    style={{
+      background: theme.cardBg,
+      padding: '20px',
+      borderRadius: '10px',
+      border: `1px solid ${theme.border}`,
+    }}
+  >
+    <h3
+      style={{
+        color: theme.textPrimary,
+        fontSize: '1.1rem',
+        marginBottom: '15px',
+      }}
+    >
+      Pending Requests
+    </h3>
+
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          textAlign: 'left',
+          fontSize: '0.85rem',
+        }}
+      >
         <thead>
-          <tr style={{ borderBottom: `1px solid ${theme.borderStrong}`, color: theme.textMuted }}>
+          <tr
+            style={{
+              borderBottom: `1px solid ${theme.borderStrong}`,
+              color: theme.textMuted,
+            }}
+          >
             <th style={{ padding: '12px' }}>User Email</th>
             <th style={{ padding: '12px' }}>Vehicle Name</th>
             <th style={{ padding: '12px' }}>From Date</th>
@@ -1075,75 +1709,185 @@ const [verifications, setVerifications] = useState(() => {
             <th style={{ padding: '12px', textAlign: 'center' }}>Actions</th>
           </tr>
         </thead>
-        <tbody>
-          {bookings.length === 0 ? (
-            <tr><td colSpan="6" style={{ padding: '20px', textAlign: 'center', color: theme.textSoft }}>No bookings found.</td></tr>
-          ) : (
-            bookings.map((item, index) => (
-              <tr key={`booking-row-${index}`} style={{ borderBottom: `1px solid ${theme.border}`, color: theme.textSecondary }}>
-                <td style={{ padding: '12px' }}>{item.userEmail}</td>
-                <td style={{ padding: '12px', fontWeight: '600' }}>{item.vehicleName}</td>
-                <td style={{ padding: '12px' }}>{item.startDate}</td>
-                <td style={{ padding: '12px' }}>{item.endDate}</td>
-                <td style={{ padding: '12px' }}>
-                  <span style={{ 
-                    background: item.status === 'Confirmed' ? 'rgba(34, 197, 94, 0.2)' : item.status === 'Rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)', 
-                    color: item.status === 'Confirmed' ? '#22c55e' : item.status === 'Rejected' ? '#ef4444' : '#eab308', 
-                    padding: '4px 10px', 
-                    borderRadius: '4px', 
-                    fontSize: '0.7rem', 
-                    fontWeight: 'bold',
-                    display: 'inline-block' 
-                  }}>
-                    {item.status || 'Pending'}
-                  </span>
 
-                  {/* Admin table ke andar Rejection Reason dikhane ke liye */}
-                  {item.status === 'Rejected' && item.rejectionReason && (
-                    <div style={{ fontSize: '0.65rem', color: '#ef4444', marginTop: '4px', fontWeight: '500' }}>
-                      Reason: {item.rejectionReason}
+        <tbody>
+          {(() => {
+            // Yahan humne 'pending' aur 'payment received' dono ko rakha hai
+            // Jab tak admin Confirm ya Reject nahi karta, ye yahin dikhegi!
+            const pendingBookings = Array.isArray(bookings)
+              ? bookings.filter((item) => {
+                  const itemStatus = String(
+                    item?.status || item?.bookingStatus || ''
+                  )
+                    .trim()
+                    .toLowerCase();
+
+                  return (
+                    itemStatus === 'pending' ||
+                    itemStatus === 'payment received' ||
+                    itemStatus === 'paid'
+                  );
+                })
+              : [];
+
+            if (pendingBookings.length === 0) {
+              return (
+                <tr>
+                  <td
+                    colSpan="6"
+                    style={{
+                      padding: '30px',
+                      textAlign: 'center',
+                      color: theme.textSoft,
+                    }}
+                  >
+                    No pending requests found.
+                  </td>
+                </tr>
+              );
+            }
+
+            return pendingBookings.map((item, index) => {
+              const originalIndex = bookings.findIndex(
+                (booking) => booking === item
+              );
+
+              const currentStatus = item?.status || item?.bookingStatus || 'Pending';
+              // Treat all awaiting-admin-action statuses as Pending display
+              const displayStatus = 'Pending';
+
+              return (
+                <tr
+                  key={
+                    item?._id ||
+                    item?.bookingId ||
+                    `pending-booking-${index}`
+                  }
+                  style={{
+                    borderBottom: `1px solid ${theme.border}`,
+                    color: theme.textSecondary,
+                  }}
+                >
+                  <td style={{ padding: '12px' }}>
+                    {item?.userEmail || item?.email || 'N/A'}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: '12px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {item?.vehicleName || item?.vehicle || 'N/A'}
+                  </td>
+
+                  <td style={{ padding: '12px' }}>
+                    {item?.startDate || item?.pickupDate || item?.fromDate || 'N/A'}
+                  </td>
+
+                  <td style={{ padding: '12px' }}>
+                    {item?.endDate || item?.returnDate || item?.toDate || 'N/A'}
+                  </td>
+
+                  <td style={{ padding: '12px' }}>
+                    <span
+                      style={{
+                        background: 'rgba(234, 179, 8, 0.2)',
+                        color: '#eab308',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        display: 'inline-block',
+                      }}
+                    >
+                      Pending
+                    </span>
+                  </td>
+
+                  <td
+                    style={{
+                      padding: '12px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          if (originalIndex !== -1) {
+                            handleStatusChange(
+                              originalIndex,
+                              'Confirmed'
+                            );
+                          }
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          background: '#22c55e',
+                          color: theme.onAccent,
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        Confirm
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const reason = window.prompt(
+                            'Enter reason for rejection:'
+                          );
+
+                          if (
+                            reason === null ||
+                            reason.trim() === ''
+                          ) {
+                            return;
+                          }
+
+                          if (originalIndex !== -1) {
+                            handleStatusChange(
+                              originalIndex,
+                              'Rejected',
+                              reason.trim()
+                            );
+                          }
+                        }}
+                        style={{
+                          padding: '5px 10px',
+                          background: '#ef4444',
+                          color: theme.onAccent,
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        Reject
+                      </button>
                     </div>
-                  )}
-                </td>
-                <td style={{ padding: '12px', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                    <button 
-                      onClick={() => handleStatusChange(index, 'Confirmed')} 
-                      style={{ padding: '5px 10px', background: '#22c55e', color: theme.onAccent, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                    >
-                      Confirm
-                    </button>
-                    <button 
-                      onClick={() => {
-                        let reason = prompt("Enter reason for rejection:");
-                        if (reason) {
-                          // Agar reason diya hai toh handleStatusChange ko call karenge sath mein reason bhejkar
-                          // Yahan hum directly item ya index pass kar rahe hain
-                          const updatedBookings = [...bookings];
-                          updatedBookings[index].status = 'Rejected';
-                          updatedBookings[index].rejectionReason = reason;
-                          
-                          // State aur localStorage update karne ka logic
-                          setBookings(updatedBookings);
-                          localStorage.setItem('allBookings', JSON.stringify(updatedBookings));
-                          window.dispatchEvent(new Event('userBookingsUpdated'));
-                        }
-                      }} 
-                      style={{ padding: '5px 10px', background: '#ef4444', color: theme.onAccent, border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
-          )}
+                  </td>
+                </tr>
+              );
+            });
+          })()}
         </tbody>
       </table>
     </div>
   </div>
 )}
-     {/* 3. BOOKING ORDER TAB */}
+    
+     {/* 4. BOOKING ORDER TAB */}
 {activeTab === 'booking order' && (
   <div
     style={{
@@ -1584,9 +2328,7 @@ const [verifications, setVerifications] = useState(() => {
   </div>
 )}
         
-{/* =========================================================
-    5. BOOKING HISTORY TAB
-========================================================= */}
+{/* 5. BOOKING HISTORY TAB */}
 
 {activeTab === 'booking history' && (
   <div
@@ -1595,10 +2337,19 @@ const [verifications, setVerifications] = useState(() => {
       padding: '20px',
       borderRadius: '10px',
       border: `1px solid ${theme.border}`,
+      width: '100%',
+      boxSizing: 'border-box',
     }}
   >
-    {/* HEADER */}
-    <div style={{ marginBottom: '20px' }}>
+    {/* =====================================================
+        HEADER
+    ===================================================== */}
+
+    <div
+      style={{
+        marginBottom: '20px',
+      }}
+    >
       <h3
         style={{
           color: theme.textPrimary,
@@ -1620,32 +2371,104 @@ const [verifications, setVerifications] = useState(() => {
       </p>
     </div>
 
-    {/* TABLE */}
-    <div style={{ overflowX: 'auto' }}>
+    {/* =====================================================
+        SEARCH BAR
+    ===================================================== */}
+
+    <div
+      style={{
+        marginBottom: '16px',
+      }}
+    >
+      <input
+        type="text"
+        placeholder="Search by name, phone, email, vehicle, status..."
+        value={historySearchTerm || ''}
+        onChange={(e) =>
+          setHistorySearchTerm(e.target.value)
+        }
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          padding: '11px 14px',
+          fontSize: '0.85rem',
+          background: theme.inputBg || theme.bg,
+          border: `1px solid ${
+            theme.borderStrong || theme.border
+          }`,
+          color: theme.textPrimary,
+          borderRadius: '7px',
+          outline: 'none',
+        }}
+      />
+    </div>
+
+    {/* =====================================================
+        TABLE
+    ===================================================== */}
+
+    <div
+      style={{
+        overflowX: 'auto',
+        width: '100%',
+      }}
+    >
       <table
         style={{
           width: '100%',
           borderCollapse: 'collapse',
           textAlign: 'left',
           fontSize: '0.85rem',
+          minWidth: '900px',
         }}
       >
+        {/* TABLE HEADER */}
+
         <thead>
           <tr
             style={{
-              borderBottom: `1px solid ${theme.borderStrong}`,
+              borderBottom: `1px solid ${
+                theme.borderStrong || theme.border
+              }`,
               color: theme.textMuted,
             }}
           >
-            <th style={{ padding: '12px' }}>#</th>
-            <th style={{ padding: '12px' }}>User Name</th>
-            <th style={{ padding: '12px' }}>Phone</th>
-            <th style={{ padding: '12px' }}>Email</th>
-            <th style={{ padding: '12px' }}>Vehicle</th>
-            <th style={{ padding: '12px' }}>From</th>
-            <th style={{ padding: '12px' }}>To</th>
-            <th style={{ padding: '12px' }}>Amount</th>
-            <th style={{ padding: '12px' }}>Status</th>
+            <th style={{ padding: '12px' }}>
+              #
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              User Name
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              Phone
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              Email
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              Vehicle
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              From
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              To
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              Amount
+            </th>
+
+            <th style={{ padding: '12px' }}>
+              Status
+            </th>
+
             <th
               style={{
                 padding: '12px',
@@ -1657,171 +2480,361 @@ const [verifications, setVerifications] = useState(() => {
           </tr>
         </thead>
 
-        <tbody>
-          {!bookings || bookings.length === 0 ? (
-            <tr>
-              <td
-                colSpan="10"
-                style={{
-                  padding: '30px',
-                  textAlign: 'center',
-                  color: theme.textSoft,
-                }}
-              >
-                No booking history yet.
-              </td>
-            </tr>
-          ) : (
-            bookings.map((item, idx) => {
-              const status =
-                item.status ||
-                item.bookingStatus ||
-                'Pending';
+        {/* TABLE BODY */}
 
+        <tbody>
+          {(() => {
+            /*
+              -------------------------------------------------
+              STEP 1
+              bookings ko safe array banate hain
+              -------------------------------------------------
+            */
+
+            const bookingList = Array.isArray(bookings)
+              ? bookings
+              : [];
+
+            /*
+              -------------------------------------------------
+              STEP 2
+              Sirf history bookings:
+              Confirmed
+              Rejected
+              Cancelled
+
+              Pending ko hide rakhenge.
+              -------------------------------------------------
+            */
+
+            const historyBookings =
+              bookingList.filter((item) => {
+                if (
+                  !item ||
+                  typeof item !== 'object'
+                ) {
+                  return false;
+                }
+
+                const status = String(
+                  item.status ||
+                    item.bookingStatus ||
+                    ''
+                )
+                  .trim()
+                  .toLowerCase();
+
+                return (
+                  status === 'confirmed' ||
+                  status === 'rejected' ||
+                  status === 'cancelled'
+                );
+              });
+
+            /*
+              -------------------------------------------------
+              STEP 3
+              SEARCH
+              -------------------------------------------------
+            */
+
+            const term = String(
+              historySearchTerm || ''
+            )
+              .trim()
+              .toLowerCase();
+
+            const visibleBookings = term
+              ? historyBookings.filter((item) => {
+                  const searchText = [
+                    item.userName,
+                    item.userNumber,
+                    item.phone,
+                    item.email,
+                    item.userEmail,
+                    item.vehicleName,
+                    item.vehicle,
+                    item.status,
+                    item.bookingStatus,
+                    item.startDate,
+                    item.endDate,
+                    item.pickupDate,
+                    item.returnDate,
+                    item.pickupLocation,
+                    item.city,
+                    item.state,
+                    item.zipCode,
+                    item.bookingId,
+                    item._id,
+                    item.id,
+                  ]
+                    .filter(
+                      (value) =>
+                        value !== null &&
+                        value !== undefined
+                    )
+                    .join(' ')
+                    .toLowerCase();
+
+                  return searchText.includes(term);
+                })
+              : historyBookings;
+
+            /*
+              -------------------------------------------------
+              STEP 4
+              NO BOOKING
+              -------------------------------------------------
+            */
+
+            if (
+              visibleBookings.length === 0
+            ) {
               return (
-                <tr
-                  key={
-                    item._id ||
-                    item.id ||
-                    item.bookingId ||
-                    `history-${idx}`
-                  }
-                  style={{
-                    borderBottom: `1px solid ${theme.border}`,
-                    color: theme.textSecondary,
-                  }}
-                >
-                  {/* NUMBER */}
+                <tr>
                   <td
+                    colSpan="10"
                     style={{
-                      padding: '12px',
+                      padding: '40px 20px',
+                      textAlign: 'center',
                       color: theme.textSoft,
                     }}
                   >
-                    {idx + 1}
-                  </td>
-
-                  {/* USER NAME */}
-                  <td style={{ padding: '12px' }}>
-                    {item.userName || 'N/A'}
-                  </td>
-
-                  {/* PHONE */}
-                  <td style={{ padding: '12px' }}>
-                    {item.userNumber ||
-                      item.phone ||
-                      'N/A'}
-                  </td>
-
-                  {/* EMAIL */}
-                  <td style={{ padding: '12px' }}>
-                    {item.userEmail || 'N/A'}
-                  </td>
-
-                  {/* VEHICLE */}
-                  <td
-                    style={{
-                      padding: '12px',
-                      fontWeight: '600',
-                      color: theme.textPrimary,
-                    }}
-                  >
-                    {item.vehicleName || 'Vehicle'}
-                  </td>
-
-                  {/* START DATE */}
-                  <td style={{ padding: '12px' }}>
-                    {item.startDate || 'N/A'}
-                  </td>
-
-                  {/* END DATE */}
-                  <td style={{ padding: '12px' }}>
-                    {item.endDate || 'N/A'}
-                  </td>
-
-                  {/* AMOUNT */}
-                  <td
-                    style={{
-                      padding: '12px',
-                      color: '#22c55e',
-                      fontWeight: 'bold',
-                    }}
-                  >
-                    ₹
-                    {item.totalAmount ||
-                      item.totalPrice ||
-                      item.price ||
-                      '0'}
-                  </td>
-
-                  {/* STATUS */}
-                  <td style={{ padding: '12px' }}>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '5px 10px',
-                        borderRadius: '5px',
-                        fontSize: '0.7rem',
-                        fontWeight: 'bold',
-
-                        background:
-                          status === 'Confirmed'
-                            ? 'rgba(34,197,94,0.2)'
-                            : status === 'Running'
-                            ? 'rgba(59,130,246,0.2)'
-                            : status === 'Rejected'
-                            ? 'rgba(239,68,68,0.2)'
-                            : status === 'Cancelled'
-                            ? 'rgba(239,68,68,0.2)'
-                            : 'rgba(234,179,8,0.2)',
-
-                        color:
-                          status === 'Confirmed'
-                            ? '#22c55e'
-                            : status === 'Running'
-                            ? '#3b82f6'
-                            : status === 'Rejected'
-                            ? '#ef4444'
-                            : status === 'Cancelled'
-                            ? '#ef4444'
-                            : '#eab308',
-                      }}
-                    >
-                      {status}
-                    </span>
-                  </td>
-
-                  {/* ACTIONS */}
-                  <td
-                    style={{
-                      padding: '12px',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <button
-                      onClick={() => {
-                        setSelectedBooking(item);
-                        setIsViewModalOpen(true);
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        background:
-                          'rgba(59,130,246,0.2)',
-                        color: '#3b82f6',
-                        border: '1px solid rgba(59,130,246,0.4)',
-                        borderRadius: '5px',
-                        cursor: 'pointer',
-                        fontSize: '0.75rem',
-                        fontWeight: '600',
-                      }}
-                    >
-                      View
-                    </button>
+                    {term
+                      ? 'No matching bookings found.'
+                      : 'No booking history yet.'}
                   </td>
                 </tr>
               );
-            })
-          )}
+            }
+
+            /*
+              -------------------------------------------------
+              STEP 5
+              SHOW BOOKINGS
+              -------------------------------------------------
+            */
+
+            return visibleBookings.map(
+              (item, idx) => {
+                const status =
+                  item.status ||
+                  item.bookingStatus ||
+                  'Pending';
+
+                const normalizedStatus =
+                  String(status)
+                    .trim()
+                    .toLowerCase();
+
+                const amount =
+                  item.totalAmount ??
+                  item.totalPrice ??
+                  item.price ??
+                  0;
+
+                return (
+                  <tr
+                    key={
+                      item._id ||
+                      item.id ||
+                      item.bookingId ||
+                      `history-${idx}`
+                    }
+                    style={{
+                      borderBottom:
+                        `1px solid ${theme.border}`,
+                      color:
+                        theme.textSecondary,
+                    }}
+                  >
+                    {/* NUMBER */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                        color: theme.textSoft,
+                      }}
+                    >
+                      {idx + 1}
+                    </td>
+
+                    {/* USER NAME */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      {item.userName ||
+                        item.name ||
+                        'N/A'}
+                    </td>
+
+                    {/* PHONE */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      {item.userNumber ||
+                        item.phone ||
+                        'N/A'}
+                    </td>
+
+                    {/* EMAIL */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      {item.userEmail ||
+                        item.email ||
+                        'N/A'}
+                    </td>
+
+                    {/* VEHICLE */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                        fontWeight: '600',
+                        color:
+                          theme.textPrimary,
+                      }}
+                    >
+                      {item.vehicleName ||
+                        item.vehicle ||
+                        'Vehicle'}
+                    </td>
+
+                    {/* FROM */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      {item.startDate ||
+                        item.pickupDate ||
+                        item.fromDate ||
+                        'N/A'}
+                    </td>
+
+                    {/* TO */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      {item.endDate ||
+                        item.returnDate ||
+                        item.toDate ||
+                        'N/A'}
+                    </td>
+
+                    {/* AMOUNT */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                        color: '#22c55e',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      ₹{amount}
+                    </td>
+
+                    {/* STATUS */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          display:
+                            'inline-block',
+                          padding:
+                            '5px 10px',
+                          borderRadius: '5px',
+                          fontSize:
+                            '0.7rem',
+                          fontWeight:
+                            'bold',
+
+                          background:
+                            normalizedStatus ===
+                            'confirmed'
+                              ? 'rgba(34,197,94,0.15)'
+                              : normalizedStatus ===
+                                  'rejected'
+                                ? 'rgba(239,68,68,0.15)'
+                                : 'rgba(234,179,8,0.15)',
+
+                          color:
+                            normalizedStatus ===
+                            'confirmed'
+                              ? '#22c55e'
+                              : normalizedStatus ===
+                                  'rejected'
+                                ? '#ef4444'
+                                : '#eab308',
+                        }}
+                      >
+                        {status}
+                      </span>
+                    </td>
+
+                    {/* ACTION */}
+
+                    <td
+                      style={{
+                        padding: '12px',
+                        textAlign: 'center',
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          setSelectedBooking(
+                            item
+                          );
+
+                          setIsViewModalOpen(
+                            true
+                          );
+                        }}
+                        style={{
+                          padding:
+                            '6px 12px',
+                          background:
+                            'rgba(59,130,246,0.2)',
+                          color:
+                            '#3b82f6',
+                          border:
+                            '1px solid rgba(59,130,246,0.4)',
+                          borderRadius:
+                            '5px',
+                          cursor:
+                            'pointer',
+                          fontSize:
+                            '0.75rem',
+                          fontWeight:
+                            '600',
+                        }}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              }
+            );
+          })()}
         </tbody>
       </table>
     </div>
@@ -1830,788 +2843,969 @@ const [verifications, setVerifications] = useState(() => {
         VIEW BOOKING MODAL
     ===================================================== */}
 
-    {isViewModalOpen && selectedBooking && (
-      <div
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'rgba(0,0,0,0.75)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999,
-          padding: '20px',
-          boxSizing: 'border-box',
-        }}
-      >
+    {isViewModalOpen &&
+      selectedBooking && (
         <div
           style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
             width: '100%',
-            maxWidth: '700px',
-            maxHeight: '90vh',
-            overflowY: 'auto',
+            height: '100%',
             background:
-              theme.cardBg || '#1e293b',
-            border:
-              `1px solid ${theme.border || '#334155'}`,
-            borderRadius: '14px',
-            color:
-              theme.textPrimary || '#fff',
-            boxShadow:
-              '0 20px 50px rgba(0,0,0,0.5)',
+              'rgba(0,0,0,0.75)',
+            display: 'flex',
+            justifyContent:
+              'center',
+            alignItems: 'center',
+            zIndex: 9999,
+            padding: '20px',
+            boxSizing: 'border-box',
           }}
         >
-
-          {/* =================================================
-              MODAL HEADER
-          ================================================= */}
-
           <div
             style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '18px 22px',
-              borderBottom:
-                `1px solid ${theme.border}`,
-              position: 'sticky',
-              top: 0,
+              width: '100%',
+              maxWidth: '700px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
               background:
-                theme.cardBg || '#1e293b',
-              zIndex: 10,
+                theme.cardBg ||
+                '#1e293b',
+              border:
+                `1px solid ${
+                  theme.border ||
+                  '#334155'
+                }`,
+              borderRadius: '14px',
+              color:
+                theme.textPrimary ||
+                '#fff',
+              boxShadow:
+                '0 20px 50px rgba(0,0,0,0.5)',
             }}
           >
-            <div>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: '1.2rem',
-                }}
-              >
-                📋 Booking Details
-              </h2>
-
-              <p
-                style={{
-                  margin: '4px 0 0',
-                  fontSize: '0.75rem',
-                  color: theme.textSoft,
-                }}
-              >
-                Complete booking information
-              </p>
-            </div>
-
-            <button
-              onClick={() => {
-                setIsViewModalOpen(false);
-                setSelectedBooking(null);
-              }}
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '50%',
-                border: 'none',
-                background: 'rgba(239,68,68,0.15)',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontSize: '18px',
-                fontWeight: 'bold',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* =================================================
-              MODAL BODY
-          ================================================= */}
-
-          <div style={{ padding: '22px' }}>
-
-            {/* VEHICLE IMAGE + NAME */}
+            {/* =================================================
+                MODAL HEADER
+            ================================================= */}
 
             <div
               style={{
                 display: 'flex',
-                gap: '18px',
+                justifyContent:
+                  'space-between',
                 alignItems: 'center',
-                marginBottom: '22px',
-                flexWrap: 'wrap',
+                padding:
+                  '18px 22px',
+                borderBottom:
+                  `1px solid ${theme.border}`,
+                position: 'sticky',
+                top: 0,
+                background:
+                  theme.cardBg ||
+                  '#1e293b',
+                zIndex: 10,
               }}
             >
-              <img
-                src={
-                  selectedBooking.image ||
-                  selectedBooking.vehicleImage ||
-                  selectedBooking.imageUrl ||
-                  'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80'
-                }
-                alt={
-                  selectedBooking.vehicleName ||
-                  'Vehicle'
-                }
-                onError={(e) => {
-                  e.currentTarget.src =
-                    'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80';
-                }}
-                style={{
-                  width: '180px',
-                  height: '120px',
-                  objectFit: 'cover',
-                  borderRadius: '10px',
-                  background: '#000',
-                  border: '1px solid #334155',
-                }}
-              />
-
               <div>
                 <h2
                   style={{
-                    margin: '0 0 8px',
-                    color: '#ff8500',
-                    fontSize: '1.4rem',
+                    margin: 0,
+                    fontSize:
+                      '1.2rem',
                   }}
                 >
-                  {selectedBooking.vehicleName ||
-                    'Vehicle'}
+                  📋 Booking Details
                 </h2>
 
-                <div
+                <p
                   style={{
-                    color: theme.textSoft,
-                    fontSize: '0.85rem',
+                    margin:
+                      '4px 0 0',
+                    fontSize:
+                      '0.75rem',
+                    color:
+                      theme.textSoft,
                   }}
                 >
-                  Vehicle Type:{' '}
-                  <strong
-                    style={{
-                      color:
-                        theme.textPrimary,
-                    }}
-                  >
-                    {selectedBooking.vehicleType ||
-                      selectedBooking.type ||
-                      'Car'}
-                  </strong>
-                </div>
-
-                <div
-                  style={{
-                    marginTop: '6px',
-                    color: theme.textSoft,
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  Amount:{' '}
-                  <strong
-                    style={{
-                      color: '#22c55e',
-                    }}
-                  >
-                    ₹
-                    {selectedBooking.totalAmount ||
-                      selectedBooking.totalPrice ||
-                      selectedBooking.price ||
-                      '0'}
-                  </strong>
-                </div>
+                  Complete booking
+                  information
+                </p>
               </div>
-            </div>
 
-            {/* CURRENT STATUS */}
-
-            <div
-              style={{
-                marginBottom: '22px',
-                padding: '12px',
-                borderRadius: '8px',
-                background:
-                  'rgba(255,255,255,0.04)',
-                border:
-                  '1px solid rgba(255,255,255,0.08)',
-              }}
-            >
-              <strong>
-                Current Status:
-              </strong>{' '}
-
-              <span
+              <button
+                onClick={() => {
+                  setIsViewModalOpen(
+                    false
+                  );
+                  setSelectedBooking(
+                    null
+                  );
+                }}
                 style={{
-                  color:
-                    selectedBooking.status ===
-                    'Rejected'
-                      ? '#ef4444'
-                      : selectedBooking.status ===
-                        'Confirmed'
-                      ? '#22c55e'
-                      : '#eab308',
-                  fontWeight: 'bold',
+                  width: '34px',
+                  height: '34px',
+                  borderRadius:
+                    '50%',
+                  border: 'none',
+                  background:
+                    'rgba(239,68,68,0.15)',
+                  color: '#ef4444',
+                  cursor:
+                    'pointer',
+                  fontSize:
+                    '18px',
+                  fontWeight:
+                    'bold',
                 }}
               >
-                {selectedBooking.status ||
-                  selectedBooking.bookingStatus ||
-                  'Pending'}
-              </span>
+                ✕
+              </button>
             </div>
 
             {/* =================================================
-                BOOKING INFORMATION
+                MODAL BODY
             ================================================= */}
-
-            <h3
-              style={{
-                color: '#ff8500',
-                fontSize: '1rem',
-                marginBottom: '12px',
-              }}
-            >
-              📅 Booking Information
-            </h3>
 
             <div
               style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit,minmax(200px,1fr))',
-                gap: '10px',
-                marginBottom: '22px',
+                padding: '22px',
               }}
             >
-              {[
-                [
-                  'Booking ID',
-                  selectedBooking.bookingId ||
-                    selectedBooking._id ||
-                    selectedBooking.id,
-                ],
-                [
-                  'Pickup Date',
-                  selectedBooking.startDate,
-                ],
-                [
-                  'Return Date',
-                  selectedBooking.endDate,
-                ],
-                [
-                  'Total Days',
-                  selectedBooking.totalDays
-                    ? `${selectedBooking.totalDays} days`
-                    : 'N/A',
-                ],
-                [
-                  'Pickup Location',
-                  selectedBooking.pickupLocation,
-                ],
-                [
-                  'City',
-                  selectedBooking.city,
-                ],
-                [
-                  'State',
-                  selectedBooking.state,
-                ],
-                [
-                  'ZIP Code',
-                  selectedBooking.zipCode,
-                ],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  style={{
-                    padding: '12px',
-                    background:
-                      'rgba(255,255,255,0.04)',
-                    borderRadius: '7px',
-                    border:
-                      '1px solid rgba(255,255,255,0.07)',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '0.7rem',
-                      color: theme.textSoft,
-                      marginBottom: '4px',
-                    }}
-                  >
-                    {label}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '0.82rem',
-                      color:
-                        theme.textPrimary,
-                      wordBreak:
-                        'break-word',
-                    }}
-                  >
-                    {value || 'N/A'}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* =================================================
-                USER INFORMATION
-            ================================================= */}
-
-            <h3
-              style={{
-                color: '#ff8500',
-                fontSize: '1rem',
-                marginBottom: '12px',
-              }}
-            >
-              👤 User Information
-            </h3>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit,minmax(200px,1fr))',
-                gap: '10px',
-                marginBottom: '22px',
-              }}
-            >
-              {[
-                [
-                  'Full Name',
-                  selectedBooking.userName,
-                ],
-                [
-                  'Email',
-                  selectedBooking.userEmail,
-                ],
-                [
-                  'Phone',
-                  selectedBooking.userNumber ||
-                    selectedBooking.phone,
-                ],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  style={{
-                    padding: '12px',
-                    background:
-                      'rgba(255,255,255,0.04)',
-                    borderRadius: '7px',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '0.7rem',
-                      color: theme.textSoft,
-                      marginBottom: '4px',
-                    }}
-                  >
-                    {label}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '0.82rem',
-                      color:
-                        theme.textPrimary,
-                      wordBreak:
-                        'break-word',
-                    }}
-                  >
-                    {value || 'N/A'}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* =================================================
-                PAYMENT INFORMATION
-            ================================================= */}
-
-            <h3
-              style={{
-                color: '#ff8500',
-                fontSize: '1rem',
-                marginBottom: '12px',
-              }}
-            >
-              💳 Payment Information
-            </h3>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit,minmax(200px,1fr))',
-                gap: '10px',
-                marginBottom: '22px',
-              }}
-            >
-              {[
-                [
-                  'Payment Status',
-                  selectedBooking.paymentStatus ||
-                    selectedBooking.payment_status ||
-                    'Pending',
-                ],
-                [
-                  'Transaction ID',
-                  selectedBooking.paymentId ||
-                    selectedBooking.payment_id ||
-                    'N/A',
-                ],
-                [
-                  'Amount',
-                  `₹${
-                    selectedBooking.totalAmount ||
-                    selectedBooking.totalPrice ||
-                    selectedBooking.price ||
-                    '0'
-                  }`,
-                ],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  style={{
-                    padding: '12px',
-                    background:
-                      'rgba(255,255,255,0.04)',
-                    borderRadius: '7px',
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: '0.7rem',
-                      color: theme.textSoft,
-                      marginBottom: '4px',
-                    }}
-                  >
-                    {label}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: '0.82rem',
-                      color:
-                        label ===
-                        'Payment Status'
-                          ? '#22c55e'
-                          : theme.textPrimary,
-                      wordBreak:
-                        'break-word',
-                    }}
-                  >
-                    {value || 'N/A'}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* =================================================
-                BOOKING TIMELINE
-            ================================================= */}
-
-            <h3
-              style={{
-                color: '#ff8500',
-                fontSize: '1rem',
-                marginBottom: '12px',
-              }}
-            >
-              🕒 Booking Timeline
-            </h3>
-
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                marginBottom: '22px',
-              }}
-            >
-
-              {/* BOOKING CREATED */}
+              {/* VEHICLE */}
 
               <div
                 style={{
-                  padding: '12px',
-                  borderLeft:
-                    '3px solid #3b82f6',
-                  background:
-                    'rgba(59,130,246,0.08)',
-                  borderRadius: '5px',
+                  display: 'flex',
+                  gap: '18px',
+                  alignItems:
+                    'center',
+                  marginBottom:
+                    '22px',
+                  flexWrap:
+                    'wrap',
                 }}
               >
-                <strong
-                  style={{
-                    color: '#3b82f6',
+                <img
+                  src={
+                    selectedBooking.image ||
+                    selectedBooking.vehicleImage ||
+                    selectedBooking.imageUrl ||
+                    'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80'
+                  }
+                  alt={
+                    selectedBooking.vehicleName ||
+                    'Vehicle'
+                  }
+                  onError={(e) => {
+                    e.currentTarget.src =
+                      'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80';
                   }}
-                >
-                  📅 Booking Created
-                </strong>
+                  style={{
+                    width: '180px',
+                    height: '120px',
+                    objectFit:
+                      'cover',
+                    borderRadius:
+                      '10px',
+                    background:
+                      '#000',
+                    border:
+                      '1px solid #334155',
+                  }}
+                />
 
-                <div
-                  style={{
-                    fontSize: '0.75rem',
-                    color: theme.textSoft,
-                    marginTop: '4px',
-                  }}
-                >
-                  {selectedBooking.createdAt ||
-                    selectedBooking.bookingCreatedAt ||
-                    selectedBooking.created_at
-                    ? new Date(
-                        selectedBooking.createdAt ||
-                          selectedBooking.bookingCreatedAt ||
-                          selectedBooking.created_at
-                      ).toLocaleString()
-                    : 'Time not available'}
+                <div>
+                  <h2
+                    style={{
+                      margin:
+                        '0 0 8px',
+                      color:
+                        '#ff8500',
+                      fontSize:
+                        '1.4rem',
+                    }}
+                  >
+                    {selectedBooking.vehicleName ||
+                      selectedBooking.vehicle ||
+                      'Vehicle'}
+                  </h2>
+
+                  <div
+                    style={{
+                      color:
+                        theme.textSoft,
+                      fontSize:
+                        '0.85rem',
+                    }}
+                  >
+                    Vehicle Type:{' '}
+                    <strong
+                      style={{
+                        color:
+                          theme.textPrimary,
+                      }}
+                    >
+                      {selectedBooking.vehicleType ||
+                        selectedBooking.type ||
+                        'Car'}
+                    </strong>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop:
+                        '6px',
+                      color:
+                        theme.textSoft,
+                      fontSize:
+                        '0.85rem',
+                    }}
+                  >
+                    Amount:{' '}
+                    <strong
+                      style={{
+                        color:
+                          '#22c55e',
+                      }}
+                    >
+                      ₹
+                      {selectedBooking.totalAmount ??
+                        selectedBooking.totalPrice ??
+                        selectedBooking.price ??
+                        0}
+                    </strong>
+                  </div>
                 </div>
               </div>
 
-              {/* PAYMENT */}
+              {/* CURRENT STATUS */}
 
-              {(selectedBooking.paidAt ||
-                selectedBooking.paymentDate ||
-                selectedBooking.paid_at) && (
+              <div
+                style={{
+                  marginBottom:
+                    '22px',
+                  padding: '12px',
+                  borderRadius:
+                    '8px',
+                  background:
+                    'rgba(255,255,255,0.04)',
+                  border:
+                    '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <strong>
+                  Current Status:
+                </strong>{' '}
+
+                <span
+                  style={{
+                    color:
+                      String(
+                        selectedBooking.status ||
+                          selectedBooking.bookingStatus ||
+                          ''
+                      )
+                        .toLowerCase()
+                        .trim() ===
+                      'rejected'
+                        ? '#ef4444'
+                        : String(
+                              selectedBooking.status ||
+                                selectedBooking.bookingStatus ||
+                                ''
+                            )
+                              .toLowerCase()
+                              .trim() ===
+                            'confirmed'
+                          ? '#22c55e'
+                          : '#eab308',
+
+                    fontWeight:
+                      'bold',
+                  }}
+                >
+                  {selectedBooking.status ||
+                    selectedBooking.bookingStatus ||
+                    'Pending'}
+                </span>
+              </div>
+
+              {/* =================================================
+                  BOOKING INFORMATION
+              ================================================= */}
+
+              <h3
+                style={{
+                  color:
+                    '#ff8500',
+                  fontSize:
+                    '1rem',
+                  marginBottom:
+                    '12px',
+                }}
+              >
+                📅 Booking Information
+              </h3>
+
+              <div
+                style={{
+                  display:
+                    'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit,minmax(200px,1fr))',
+                  gap: '10px',
+                  marginBottom:
+                    '22px',
+                }}
+              >
+                {[
+                  [
+                    'Booking ID',
+                    selectedBooking.bookingId ||
+                      selectedBooking._id ||
+                      selectedBooking.id ||
+                      'N/A',
+                  ],
+                  [
+                    'Pickup Date',
+                    selectedBooking.startDate ||
+                      selectedBooking.pickupDate ||
+                      'N/A',
+                  ],
+                  [
+                    'Return Date',
+                    selectedBooking.endDate ||
+                      selectedBooking.returnDate ||
+                      'N/A',
+                  ],
+                  [
+                    'Total Days',
+                    selectedBooking.totalDays
+                      ? `${selectedBooking.totalDays} days`
+                      : 'N/A',
+                  ],
+                  [
+                    'Pickup Location',
+                    selectedBooking.pickupLocation ||
+                      'N/A',
+                  ],
+                  [
+                    'City',
+                    selectedBooking.city ||
+                      'N/A',
+                  ],
+                  [
+                    'State',
+                    selectedBooking.state ||
+                      'N/A',
+                  ],
+                  [
+                    'ZIP Code',
+                    selectedBooking.zipCode ||
+                      'N/A',
+                  ],
+                ].map(
+                  ([label, value]) => (
+                    <div
+                      key={label}
+                      style={{
+                        padding:
+                          '12px',
+                        background:
+                          'rgba(255,255,255,0.04)',
+                        borderRadius:
+                          '7px',
+                        border:
+                          '1px solid rgba(255,255,255,0.07)',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize:
+                            '0.7rem',
+                          color:
+                            theme.textSoft,
+                          marginBottom:
+                            '4px',
+                        }}
+                      >
+                        {label}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            '0.82rem',
+                          color:
+                            theme.textPrimary,
+                          wordBreak:
+                            'break-word',
+                        }}
+                      >
+                        {value ||
+                          'N/A'}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* =================================================
+                  USER INFORMATION
+              ================================================= */}
+
+              <h3
+                style={{
+                  color:
+                    '#ff8500',
+                  fontSize:
+                    '1rem',
+                  marginBottom:
+                    '12px',
+                }}
+              >
+                👤 User Information
+              </h3>
+
+              <div
+                style={{
+                  display:
+                    'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit,minmax(200px,1fr))',
+                  gap: '10px',
+                  marginBottom:
+                    '22px',
+                }}
+              >
+                {[
+                  [
+                    'Full Name',
+                    selectedBooking.userName ||
+                      selectedBooking.name ||
+                      'N/A',
+                  ],
+                  [
+                    'Email',
+                    selectedBooking.userEmail ||
+                      selectedBooking.email ||
+                      'N/A',
+                  ],
+                  [
+                    'Phone',
+                    selectedBooking.userNumber ||
+                      selectedBooking.phone ||
+                      'N/A',
+                  ],
+                ].map(
+                  ([label, value]) => (
+                    <div
+                      key={label}
+                      style={{
+                        padding:
+                          '12px',
+                        background:
+                          'rgba(255,255,255,0.04)',
+                        borderRadius:
+                          '7px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize:
+                            '0.7rem',
+                          color:
+                            theme.textSoft,
+                          marginBottom:
+                            '4px',
+                        }}
+                      >
+                        {label}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            '0.82rem',
+                          color:
+                            theme.textPrimary,
+                          wordBreak:
+                            'break-word',
+                        }}
+                      >
+                        {value ||
+                          'N/A'}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* =================================================
+                  PAYMENT INFORMATION
+              ================================================= */}
+
+              <h3
+                style={{
+                  color:
+                    '#ff8500',
+                  fontSize:
+                    '1rem',
+                  marginBottom:
+                    '12px',
+                }}
+              >
+                💳 Payment Information
+              </h3>
+
+              <div
+                style={{
+                  display:
+                    'grid',
+                  gridTemplateColumns:
+                    'repeat(auto-fit,minmax(200px,1fr))',
+                  gap: '10px',
+                  marginBottom:
+                    '22px',
+                }}
+              >
+                {[
+                  [
+                    'Payment Status',
+                    selectedBooking.paymentStatus ||
+                      selectedBooking.payment_status ||
+                      'Pending',
+                  ],
+                  [
+                    'Transaction ID',
+                    selectedBooking.paymentId ||
+                      selectedBooking.payment_id ||
+                      'N/A',
+                  ],
+                  [
+                    'Amount',
+                    `₹${
+                      selectedBooking.totalAmount ??
+                      selectedBooking.totalPrice ??
+                      selectedBooking.price ??
+                      0
+                    }`,
+                  ],
+                ].map(
+                  ([label, value]) => (
+                    <div
+                      key={label}
+                      style={{
+                        padding:
+                          '12px',
+                        background:
+                          'rgba(255,255,255,0.04)',
+                        borderRadius:
+                          '7px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize:
+                            '0.7rem',
+                          color:
+                            theme.textSoft,
+                          marginBottom:
+                            '4px',
+                        }}
+                      >
+                        {label}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize:
+                            '0.82rem',
+                          color:
+                            label ===
+                            'Payment Status'
+                              ? '#22c55e'
+                              : theme.textPrimary,
+                          wordBreak:
+                            'break-word',
+                        }}
+                      >
+                        {value ||
+                          'N/A'}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              {/* =================================================
+                  BOOKING TIMELINE
+              ================================================= */}
+
+              <h3
+                style={{
+                  color:
+                    '#ff8500',
+                  fontSize:
+                    '1rem',
+                  marginBottom:
+                    '12px',
+                }}
+              >
+                🕒 Booking Timeline
+              </h3>
+
+              <div
+                style={{
+                  display:
+                    'flex',
+                  flexDirection:
+                    'column',
+                  gap: '10px',
+                  marginBottom:
+                    '22px',
+                }}
+              >
+                {/* CREATED */}
+
                 <div
                   style={{
-                    padding: '12px',
+                    padding:
+                      '12px',
                     borderLeft:
-                      '3px solid #22c55e',
+                      '3px solid #3b82f6',
                     background:
-                      'rgba(34,197,94,0.08)',
-                    borderRadius: '5px',
+                      'rgba(59,130,246,0.08)',
+                    borderRadius:
+                      '5px',
                   }}
                 >
                   <strong
                     style={{
-                      color: '#22c55e',
+                      color:
+                        '#3b82f6',
                     }}
                   >
-                    💳 Payment Completed
+                    📅 Booking Created
                   </strong>
 
                   <div
                     style={{
-                      fontSize: '0.75rem',
-                      color: theme.textSoft,
-                      marginTop: '4px',
+                      fontSize:
+                        '0.75rem',
+                      color:
+                        theme.textSoft,
+                      marginTop:
+                        '4px',
                     }}
                   >
-                    {new Date(
-                      selectedBooking.paidAt ||
-                        selectedBooking.paymentDate ||
-                        selectedBooking.paid_at
-                    ).toLocaleString()}
+                    {selectedBooking.createdAt ||
+                    selectedBooking.bookingCreatedAt ||
+                    selectedBooking.created_at
+                      ? new Date(
+                          selectedBooking.createdAt ||
+                            selectedBooking.bookingCreatedAt ||
+                            selectedBooking.created_at
+                        ).toLocaleString()
+                      : 'Time not available'}
                   </div>
                 </div>
-              )}
 
-              {/* CONFIRMED */}
+                {/* PAYMENT */}
 
-              {(selectedBooking.confirmedAt ||
-                selectedBooking.confirmed_at) && (
-                <div
-                  style={{
-                    padding: '12px',
-                    borderLeft:
-                      '3px solid #22c55e',
-                    background:
-                      'rgba(34,197,94,0.08)',
-                    borderRadius: '5px',
-                  }}
-                >
-                  <strong
-                    style={{
-                      color: '#22c55e',
-                    }}
-                  >
-                    ✅ Booking Confirmed
-                  </strong>
-
+                {(selectedBooking.paidAt ||
+                  selectedBooking.paymentDate ||
+                  selectedBooking.paid_at) && (
                   <div
                     style={{
-                      fontSize: '0.75rem',
-                      color: theme.textSoft,
-                      marginTop: '4px',
+                      padding:
+                        '12px',
+                      borderLeft:
+                        '3px solid #22c55e',
+                      background:
+                        'rgba(34,197,94,0.08)',
+                      borderRadius:
+                        '5px',
                     }}
                   >
-                    {new Date(
-                      selectedBooking.confirmedAt ||
-                        selectedBooking.confirmed_at
-                    ).toLocaleString()}
+                    <strong
+                      style={{
+                        color:
+                          '#22c55e',
+                      }}
+                    >
+                      💳 Payment Completed
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize:
+                          '0.75rem',
+                        color:
+                          theme.textSoft,
+                        marginTop:
+                          '4px',
+                      }}
+                    >
+                      {new Date(
+                        selectedBooking.paidAt ||
+                          selectedBooking.paymentDate ||
+                          selectedBooking.paid_at
+                      ).toLocaleString()}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* REJECTED */}
+                {/* CONFIRMED */}
 
-              {(selectedBooking.rejectedAt ||
-                selectedBooking.rejected_at ||
-                selectedBooking.rejectionReason) && (
-                <div
-                  style={{
-                    padding: '12px',
-                    borderLeft:
-                      '3px solid #ef4444',
-                    background:
-                      'rgba(239,68,68,0.08)',
-                    borderRadius: '5px',
-                  }}
-                >
-                  <strong
+                {(selectedBooking.confirmedAt ||
+                  selectedBooking.confirmed_at) && (
+                  <div
                     style={{
-                      color: '#ef4444',
+                      padding:
+                        '12px',
+                      borderLeft:
+                        '3px solid #22c55e',
+                      background:
+                        'rgba(34,197,94,0.08)',
+                      borderRadius:
+                        '5px',
                     }}
                   >
-                    ❌ Booking Rejected
-                  </strong>
+                    <strong
+                      style={{
+                        color:
+                          '#22c55e',
+                      }}
+                    >
+                      ✅ Booking Confirmed
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize:
+                          '0.75rem',
+                        color:
+                          theme.textSoft,
+                        marginTop:
+                          '4px',
+                      }}
+                    >
+                      {new Date(
+                        selectedBooking.confirmedAt ||
+                          selectedBooking.confirmed_at
+                      ).toLocaleString()}
+                    </div>
+                  </div>
+                )}
+
+                {/* REJECTED */}
+
+                {(selectedBooking.rejectedAt ||
+                  selectedBooking.rejected_at ||
+                  selectedBooking.rejectionReason) && (
+                  <div
+                    style={{
+                      padding:
+                        '12px',
+                      borderLeft:
+                        '3px solid #ef4444',
+                      background:
+                        'rgba(239,68,68,0.08)',
+                      borderRadius:
+                        '5px',
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color:
+                          '#ef4444',
+                      }}
+                    >
+                      ❌ Booking Rejected
+                    </strong>
+
+                    <div
+                      style={{
+                        fontSize:
+                          '0.75rem',
+                        color:
+                          theme.textSoft,
+                        marginTop:
+                          '4px',
+                      }}
+                    >
+                      {selectedBooking.rejectedAt ||
+                      selectedBooking.rejected_at
+                        ? new Date(
+                            selectedBooking.rejectedAt ||
+                              selectedBooking.rejected_at
+                          ).toLocaleString()
+                        : 'Rejection time not available'}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop:
+                          '8px',
+                        padding:
+                          '9px',
+                        background:
+                          'rgba(239,68,68,0.1)',
+                        borderRadius:
+                          '5px',
+                      }}
+                    >
+                      <strong
+                        style={{
+                          color:
+                            '#ef4444',
+                          fontSize:
+                            '0.75rem',
+                        }}
+                      >
+                        Rejection Reason:
+                      </strong>
+
+                      <div
+                        style={{
+                          color:
+                            theme.textSecondary,
+                          fontSize:
+                            '0.8rem',
+                          marginTop:
+                            '3px',
+                        }}
+                      >
+                        {selectedBooking.rejectionReason ||
+                          'No reason provided'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* REJECTION DETAILS */}
+
+              {String(
+                selectedBooking.status ||
+                  selectedBooking.bookingStatus ||
+                  ''
+              )
+                .toLowerCase()
+                .trim() ===
+                'rejected' && (
+                <div
+                  style={{
+                    padding:
+                      '14px',
+                    background:
+                      'rgba(239,68,68,0.1)',
+                    border:
+                      '1px solid rgba(239,68,68,0.3)',
+                    borderRadius:
+                      '8px',
+                    marginBottom:
+                      '10px',
+                  }}
+                >
+                  <div
+                    style={{
+                      color:
+                        '#ef4444',
+                      fontWeight:
+                        'bold',
+                      marginBottom:
+                        '6px',
+                    }}
+                  >
+                    Rejection Details
+                  </div>
 
                   <div
                     style={{
-                      fontSize: '0.75rem',
-                      color: theme.textSoft,
-                      marginTop: '4px',
+                      fontSize:
+                        '0.8rem',
+                      color:
+                        theme.textSecondary,
                     }}
                   >
+                    Reason:{' '}
+                    {selectedBooking.rejectionReason ||
+                      'No reason provided'}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize:
+                        '0.8rem',
+                      color:
+                        theme.textSecondary,
+                      marginTop:
+                        '4px',
+                    }}
+                  >
+                    Rejected At:{' '}
                     {selectedBooking.rejectedAt ||
                     selectedBooking.rejected_at
                       ? new Date(
                           selectedBooking.rejectedAt ||
                             selectedBooking.rejected_at
                         ).toLocaleString()
-                      : 'Rejection time not available'}
-                  </div>
-
-                  {/* REASON */}
-
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '9px',
-                      background:
-                        'rgba(239,68,68,0.1)',
-                      borderRadius: '5px',
-                    }}
-                  >
-                    <strong
-                      style={{
-                        color: '#ef4444',
-                        fontSize: '0.75rem',
-                      }}
-                    >
-                      Rejection Reason:
-                    </strong>
-
-                    <div
-                      style={{
-                        color:
-                          theme.textSecondary,
-                        fontSize: '0.8rem',
-                        marginTop: '3px',
-                      }}
-                    >
-                      {selectedBooking.rejectionReason ||
-                        'No reason provided'}
-                    </div>
+                      : 'N/A'}
                   </div>
                 </div>
               )}
             </div>
 
             {/* =================================================
-                EXTRA STATUS INFORMATION
+                MODAL FOOTER
             ================================================= */}
 
-            {selectedBooking.status ===
-              'Rejected' && (
-              <div
-                style={{
-                  padding: '14px',
-                  background:
-                    'rgba(239,68,68,0.1)',
-                  border:
-                    '1px solid rgba(239,68,68,0.3)',
-                  borderRadius: '8px',
-                  marginBottom: '10px',
-                }}
-              >
-                <div
-                  style={{
-                    color: '#ef4444',
-                    fontWeight: 'bold',
-                    marginBottom: '6px',
-                  }}
-                >
-                  Rejection Details
-                </div>
+            <div
+              style={{
+                display:
+                  'flex',
+                justifyContent:
+                  'flex-end',
+                gap: '10px',
+                padding:
+                  '16px 22px',
+                borderTop:
+                  `1px solid ${theme.border}`,
+                position:
+                  'sticky',
+                bottom: 0,
+                background:
+                  theme.cardBg ||
+                  '#1e293b',
+              }}
+            >
+              {/* APPROVE */}
 
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    color: theme.textSecondary,
-                  }}
-                >
-                  Reason:{' '}
-                  {selectedBooking.rejectionReason ||
-                    'No reason provided'}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: '0.8rem',
-                    color: theme.textSecondary,
-                    marginTop: '4px',
-                  }}
-                >
-                  Rejected At:{' '}
-                  {selectedBooking.rejectedAt ||
-                  selectedBooking.rejected_at
-                    ? new Date(
-                        selectedBooking.rejectedAt ||
-                          selectedBooking.rejected_at
-                      ).toLocaleString()
-                    : 'N/A'}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* =================================================
-              FOOTER
-          ================================================= */}
-
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: '10px',
-              padding: '16px 22px',
-              borderTop:
-                `1px solid ${theme.border}`,
-              position: 'sticky',
-              bottom: 0,
-              background:
-                theme.cardBg || '#1e293b',
-            }}
-          >
-
-            {/* APPROVE */}
-
-            {selectedBooking.status !==
-              'Confirmed' &&
-              selectedBooking.status !==
-                'Rejected' && (
-                <>
+              {String(
+                selectedBooking.status ||
+                  selectedBooking.bookingStatus ||
+                  ''
+              )
+                .toLowerCase()
+                .trim() !==
+                'confirmed' &&
+                String(
+                  selectedBooking.status ||
+                    selectedBooking.bookingStatus ||
+                    ''
+                )
+                  .toLowerCase()
+                  .trim() !==
+                  'rejected' && (
                   <button
                     onClick={() => {
                       const updated = {
                         ...selectedBooking,
-                        status: 'Confirmed',
+                        status:
+                          'Confirmed',
                         bookingStatus:
                           'Confirmed',
                         confirmedAt:
@@ -2627,21 +3821,27 @@ const [verifications, setVerifications] = useState(() => {
                         'function'
                       ) {
                         const index =
-                          bookings.findIndex(
-                            (b) =>
-                              String(
-                                b._id ||
-                                  b.id ||
-                                  b.bookingId
-                              ) ===
-                              String(
-                                selectedBooking._id ||
-                                  selectedBooking.id ||
-                                  selectedBooking.bookingId
+                          Array.isArray(
+                            bookings
+                          )
+                            ? bookings.findIndex(
+                                (b) =>
+                                  String(
+                                    b?._id ||
+                                      b?.id ||
+                                      b?.bookingId
+                                  ) ===
+                                  String(
+                                    selectedBooking._id ||
+                                      selectedBooking.id ||
+                                      selectedBooking.bookingId
+                                  )
                               )
-                          );
+                            : -1;
 
-                        if (index !== -1) {
+                        if (
+                          index !== -1
+                        ) {
                           handleStatusChange(
                             index,
                             'Confirmed'
@@ -2650,22 +3850,44 @@ const [verifications, setVerifications] = useState(() => {
                       }
                     }}
                     style={{
-                      padding: '9px 18px',
+                      padding:
+                        '9px 18px',
                       background:
                         'rgba(34,197,94,0.15)',
-                      color: '#22c55e',
+                      color:
+                        '#22c55e',
                       border:
                         '1px solid rgba(34,197,94,0.4)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
+                      borderRadius:
+                        '6px',
+                      cursor:
+                        'pointer',
+                      fontWeight:
+                        '600',
                     }}
                   >
                     Approve
                   </button>
+                )}
 
-                  {/* REJECT */}
+              {/* REJECT */}
 
+              {String(
+                selectedBooking.status ||
+                  selectedBooking.bookingStatus ||
+                  ''
+              )
+                .toLowerCase()
+                .trim() !==
+                'confirmed' &&
+                String(
+                  selectedBooking.status ||
+                    selectedBooking.bookingStatus ||
+                    ''
+                )
+                  .toLowerCase()
+                  .trim() !==
+                  'rejected' && (
                   <button
                     onClick={() => {
                       const reason =
@@ -2674,19 +3896,24 @@ const [verifications, setVerifications] = useState(() => {
                         );
 
                       if (
-                        reason === null
+                        reason ===
+                        null
                       ) {
                         return;
                       }
 
+                      const finalReason =
+                        reason.trim() ||
+                        'No reason provided';
+
                       const updated = {
                         ...selectedBooking,
-                        status: 'Rejected',
+                        status:
+                          'Rejected',
                         bookingStatus:
                           'Rejected',
                         rejectionReason:
-                          reason.trim() ||
-                          'No reason provided',
+                          finalReason,
                         rejectedAt:
                           new Date().toISOString(),
                       };
@@ -2700,231 +3927,391 @@ const [verifications, setVerifications] = useState(() => {
                         'function'
                       ) {
                         const index =
-                          bookings.findIndex(
-                            (b) =>
-                              String(
-                                b._id ||
-                                  b.id ||
-                                  b.bookingId
-                              ) ===
-                              String(
-                                selectedBooking._id ||
-                                  selectedBooking.id ||
-                                  selectedBooking.bookingId
+                          Array.isArray(
+                            bookings
+                          )
+                            ? bookings.findIndex(
+                                (b) =>
+                                  String(
+                                    b?._id ||
+                                      b?.id ||
+                                      b?.bookingId
+                                  ) ===
+                                  String(
+                                    selectedBooking._id ||
+                                      selectedBooking.id ||
+                                      selectedBooking.bookingId
+                                  )
                               )
-                          );
+                            : -1;
 
-                        if (index !== -1) {
+                        if (
+                          index !== -1
+                        ) {
                           handleStatusChange(
                             index,
                             'Rejected',
-                            reason.trim() ||
-                              'No reason provided'
+                            finalReason
                           );
                         }
                       }
                     }}
                     style={{
-                      padding: '9px 18px',
+                      padding:
+                        '9px 18px',
                       background:
                         'rgba(239,68,68,0.15)',
-                      color: '#ef4444',
+                      color:
+                        '#ef4444',
                       border:
                         '1px solid rgba(239,68,68,0.4)',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontWeight: '600',
+                      borderRadius:
+                        '6px',
+                      cursor:
+                        'pointer',
+                      fontWeight:
+                        '600',
                     }}
                   >
                     Reject
                   </button>
-                </>
-              )}
+                )}
 
-            {/* CLOSE */}
+              {/* CLOSE */}
 
-            <button
-              onClick={() => {
-                setIsViewModalOpen(false);
-                setSelectedBooking(null);
-              }}
-              style={{
-                padding: '9px 18px',
-                background:
-                  theme.borderStrong ||
-                  '#334155',
-                color:
-                  theme.textPrimary ||
-                  '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: '600',
-              }}
-            >
-              Close
-            </button>
+              <button
+                onClick={() => {
+                  setIsViewModalOpen(
+                    false
+                  );
+
+                  setSelectedBooking(
+                    null
+                  );
+                }}
+                style={{
+                  padding:
+                    '9px 18px',
+                  background:
+                    theme.borderStrong ||
+                    '#334155',
+                  color:
+                    theme.textPrimary ||
+                    '#fff',
+                  border: 'none',
+                  borderRadius:
+                    '6px',
+                  cursor:
+                    'pointer',
+                  fontWeight:
+                    '600',
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
+      )}
+  </div>
+)}
+
+{/* 6. BOOKING STATUS TAB */}
+{/* BOOKING STATUS TAB */}
+{activeTab === 'booking status' && (() => {
+
+  // Helper function jo date aur status ke basis par exact category return karega
+  const getBookingStatus = (booking) => {
+    const currentDate = new Date();
+    
+    // Dates extract karna (alag-alag naming conventions ke hisab se safe fallback)
+    const pickupDateStr = booking.pickupDate || booking.startDate || booking.fromDate;
+    const returnDateStr = booking.returnDate || booking.endDate || booking.toDate;
+
+    if (!pickupDateStr || !returnDateStr) {
+      // Agar date nahi hai toh database ke status par depend karega
+      return booking.status || 'Upcoming';
+    }
+
+    const pickup = new Date(pickupDateStr);
+    const returnDate = new Date(returnDateStr);
+
+    // 1. Agar return date nikal chuki hai -> Closed
+    if (currentDate > returnDate) {
+      return 'Closed';
+    }
+    
+    // 2. Agar current date pickup aur return ke beech me hai -> Running
+    if (currentDate >= pickup && currentDate <= returnDate) {
+      return 'Running';
+    }
+
+    // 3. Agar booking database me explicitly 'Confirmed' hai aur abhi shuru nahi hui
+    if (booking.status === 'Confirmed' || booking.isConfirmed) {
+      return 'Confirmed';
+    }
+
+    // 4. Baaki sab jo aane wale hain -> Upcoming
+    return 'Upcoming';
+  };
+
+  return (
+    <div
+      style={{
+        background: theme.cardBg,
+        padding: '20px',
+        borderRadius: '10px',
+        border: `1px solid ${theme.border}`,
+      }}
+    >
+
+      {/* HEADER */}
+      <div
+        style={{
+          marginBottom: '20px',
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            color: theme.textPrimary,
+            fontSize: '1.2rem',
+          }}
+        >
+          Booking Status
+        </h2>
+
+        <p
+          style={{
+            margin: '5px 0 0',
+            color: theme.textMuted,
+            fontSize: '0.75rem',
+          }}
+        >
+          Manage upcoming, confirmed, running and closed bookings
+        </p>
       </div>
-    )}
-  </div>
-)}
- {/* 6. BOOKING STATUS TAB */}
-{activeTab === 'booking status' && (
-  <div>
-    {/* Summary cards (5 columns for all 5 statuses) */}
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
-        gap: '15px',
-        marginBottom: '20px',
-      }}
-    >
-      {['Pending', 'Confirmed', 'Ongoing', 'Completed', 'Cancelled'].map((statusKey) => {
-        const count = (bookings || []).filter((b) => {
-          const s = getBookingStatus ? getBookingStatus(b) : b.status || 'Pending';
-          return s.toLowerCase() === statusKey.toLowerCase();
-        }).length;
 
-        const st = calendarStatusStyle
-          ? calendarStatusStyle(statusKey)
-          : { color: '#eab308' };
 
-        return (
-          <div
-            key={statusKey}
-            style={{
-              background: theme.cardBg,
-              padding: '15px',
-              borderRadius: '10px',
-              border: `1px solid ${theme.border}`,
-            }}
-          >
-            <div style={{ fontSize: '0.75rem', color: theme.textMuted, marginBottom: '8px' }}>
-              {statusKey}
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 'bold', marginBottom: '4px', color: st.color || '#fff' }}>
-              {count}
-            </div>
-            <span
-              style={{
-                ...st,
-                fontSize: '0.65rem',
-                padding: '3px 8px',
-                borderRadius: '4px',
-                fontWeight: 'bold',
-              }}
-            >
-              Bookings
-            </span>
-          </div>
-        );
-      })}
-    </div>
+      {/* SUMMARY CARDS */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '15px',
+          marginBottom: '20px',
+        }}
+      >
+        {['Upcoming', 'Confirmed', 'Running', 'Closed'].map((statusKey) => {
+          
+          const count = (bookings || []).filter(
+            (booking) => getBookingStatus(booking) === statusKey
+          ).length;
 
-    {/* Status columns (Kanban style with Status Change options) */}
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(5, 1fr)',
-        gap: '15px',
-      }}
-    >
-      {['Pending', 'Confirmed', 'Ongoing', 'Completed', 'Cancelled'].map((statusKey) => {
-        const statusBookings = (bookings || []).filter((b) => {
-          const s = getBookingStatus ? getBookingStatus(b) : b.status || 'Pending';
-          return s.toLowerCase() === statusKey.toLowerCase();
-        });
+          let statusColor = '#eab308'; // Default Yellow (Upcoming)
 
-        const st = calendarStatusStyle
-          ? calendarStatusStyle(statusKey)
-          : { background: 'rgba(234,179,8,0.2)', color: '#eab308' };
+          if (statusKey === 'Confirmed') {
+            statusColor = '#22c55e'; // Green
+          } else if (statusKey === 'Running') {
+            statusColor = '#3b82f6'; // Blue
+          } else if (statusKey === 'Closed') {
+            statusColor = '#64748b'; // Gray
+          }
 
-        return (
-          <div
-            key={`col-${statusKey}`}
-            style={{
-              background: theme.cardBg,
-              borderRadius: '10px',
-              border: `1px solid ${theme.border}`,
-              padding: '12px',
-              minHeight: '200px',
-            }}
-          >
+          return (
             <div
+              key={statusKey}
               style={{
-                color: theme.textPrimary,
-                fontSize: '0.85rem',
-                fontWeight: 'bold',
-                marginBottom: '10px',
-                borderBottom: `1px solid ${theme.border}`,
-                paddingBottom: '6px',
+                background: theme.bg || '#0f172a',
+                padding: '15px',
+                borderRadius: '8px',
+                border: `1px solid ${theme.border}`,
               }}
             >
-              {statusKey} ({statusBookings.length})
+              <div
+                style={{
+                  color: theme.textMuted,
+                  fontSize: '0.75rem',
+                  marginBottom: '8px',
+                }}
+              >
+                {statusKey}
+              </div>
+
+              <div
+                style={{
+                  color: statusColor,
+                  fontSize: '1.5rem',
+                  fontWeight: 'bold',
+                }}
+              >
+                {count}
+              </div>
+
+              <div
+                style={{
+                  color: theme.textSoft,
+                  fontSize: '0.65rem',
+                  marginTop: '3px',
+                }}
+              >
+                Bookings
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            {statusBookings.length === 0 ? (
-              <div style={{ color: theme.textSoft, fontSize: '0.72rem', textAlign: 'center', marginTop: '20px' }}>None</div>
-            ) : (
-              statusBookings.map((b, i) => (
-                <div
-                  key={`${statusKey}-${i}`}
-                  style={{
-                    background: theme.bg || '#0f172a',
-                    border: `1px solid ${theme.border}`,
-                    padding: '10px',
-                    borderRadius: '6px',
-                    marginBottom: '8px',
-                    fontSize: '0.75rem',
-                    color: theme.textSecondary,
-                  }}
-                >
-                  <div style={{ fontWeight: '700', color: theme.textPrimary, marginBottom: '2px' }}>
-                    {b.vehicleName || 'Vehicle'}
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: theme.textSoft, marginBottom: '6px' }}>
-                    {b.userName || b.userEmail || 'Customer'}
-                  </div>
 
-                  {/* Quick Status Change Dropdown inside card */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <select
-                      value={b.status || 'Pending'}
-                      onChange={(e) => {
-                        // Yahan aap apna status update karne wala function call kar sakti hain
-                        console.log("Update booking ID:", b._id, "to new status:", e.target.value);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '3px 6px',
-                        fontSize: '0.65rem',
-                        background: theme.cardBg,
-                        color: theme.textPrimary,
-                        border: `1px solid ${theme.border}`,
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="Pending">Pending</option>
-                      <option value="Confirmed">Confirmed</option>
-                      <option value="Ongoing">Ongoing</option>
-                      <option value="Completed">Completed</option>
-                      <option value="Cancelled">Cancelled</option>
-                    </select>
-                  </div>
-                </div>
-              ))
-            )}
+      {/* BOOKING TABLE */}
+      <div
+        style={{
+          width: '100%',
+          overflowX: 'auto',
+        }}
+      >
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: '0.75rem',
+          }}
+        >
+
+          {/* TABLE HEADER */}
+          <thead>
+            <tr
+              style={{
+                background: theme.bg || '#0f172a',
+                borderBottom: `1px solid ${theme.border}`,
+              }}
+            >
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>#</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>Customer</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>Vehicle</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>Pickup Date</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>Return Date</th>
+              <th style={{ padding: '12px', textAlign: 'left', color: theme.textMuted, fontWeight: '600' }}>Amount</th>
+              <th style={{ padding: '12px', textAlign: 'center', color: theme.textMuted, fontWeight: '600' }}>Status</th>
+            </tr>
+          </thead>
+
+          {/* TABLE BODY */}
+          <tbody>
+            {(bookings || [])
+              .filter((booking) => {
+                const status = getBookingStatus(booking);
+                return [
+                  'Upcoming',
+                  'Confirmed',
+                  'Running',
+                  'Closed',
+                ].includes(status);
+              })
+              .map((booking, index) => {
+                const currentStatus = getBookingStatus(booking);
+
+                let statusColor = '#eab308';
+                if (currentStatus === 'Confirmed') {
+                  statusColor = '#22c55e';
+                } else if (currentStatus === 'Running') {
+                  statusColor = '#3b82f6';
+                } else if (currentStatus === 'Closed') {
+                  statusColor = '#64748b';
+                }
+
+                return (
+                  <tr
+                    key={booking._id || booking.id || index}
+                    style={{
+                      borderBottom: `1px solid ${theme.border}`,
+                    }}
+                  >
+                    {/* NUMBER */}
+                    <td style={{ padding: '12px', color: theme.textSoft }}>
+                      {index + 1}
+                    </td>
+
+                    {/* CUSTOMER */}
+                    <td style={{ padding: '12px', color: theme.textPrimary }}>
+                      <div style={{ fontWeight: '600' }}>
+                        {booking.userName || booking.customerName || 'Customer'}
+                      </div>
+                      <div style={{ fontSize: '0.65rem', color: theme.textSoft, marginTop: '2px' }}>
+                        {booking.userEmail || booking.email || '-'}
+                      </div>
+                    </td>
+
+                    {/* VEHICLE */}
+                    <td style={{ padding: '12px', color: theme.textPrimary }}>
+                      {booking.vehicleName || booking.vehicle || 'Vehicle'}
+                    </td>
+
+                    {/* PICKUP DATE */}
+                    <td style={{ padding: '12px', color: theme.textSecondary }}>
+                      {booking.pickupDate || booking.startDate || booking.fromDate || '-'}
+                    </td>
+
+                    {/* RETURN DATE */}
+                    <td style={{ padding: '12px', color: theme.textSecondary }}>
+                      {booking.returnDate || booking.endDate || booking.toDate || '-'}
+                    </td>
+
+                    {/* AMOUNT */}
+                    <td style={{ padding: '12px', color: theme.textPrimary, fontWeight: '600' }}>
+                      ₹{booking.totalAmount || booking.amount || booking.totalPrice || booking.price || '0'}
+                    </td>
+
+                    {/* STATUS */}
+                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '5px 12px',
+                          borderRadius: '20px',
+                          background: `${statusColor}22`,
+                          color: statusColor,
+                          fontSize: '0.65rem',
+                          fontWeight: '700',
+                        }}
+                      >
+                        {currentStatus}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+
+        {/* NO BOOKINGS */}
+        {(bookings || []).filter((booking) => {
+          const status = getBookingStatus(booking);
+          return [
+            'Upcoming',
+            'Confirmed',
+            'Running',
+            'Closed',
+          ].includes(status);
+        }).length === 0 && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '40px',
+              color: theme.textMuted,
+              fontSize: '0.8rem',
+            }}
+          >
+            No bookings found.
           </div>
-        );
-      })}
+        )}
+
+      </div>
+
     </div>
-  </div>
-)}
-         {/* 4. EXTENSIONS TAB */}
+  );
+})()}
+         {/* 7. EXTENSIONS TAB */}
         {activeTab === 'extensions' && (
           <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
             <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', marginBottom: '15px' }}>Rental Period Extensions</h3>
@@ -2964,7 +4351,7 @@ const [verifications, setVerifications] = useState(() => {
           </div>
         )}
 
-        {/* 5. REVENUE ANALYTICS TAB */}
+        {/* 8. REVENUE ANALYTICS TAB */}
         {activeTab === 'revenue' && (
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '25px' }}>
@@ -2982,13 +4369,54 @@ const [verifications, setVerifications] = useState(() => {
               </div>
             </div>
             <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
-              <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', marginBottom: '10px' }}>Financial Performance Overview</h3>
-              <p style={{ color: theme.textMuted, fontSize: '0.85rem' }}>Detailed transaction graphs and logs will appear here based on completed rental payments.</p>
+              <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', marginBottom: '20px' }}>Revenue Trends (Cars vs Bikes)</h3>
+              <div style={{ height: 300, width: '100%' }}>
+                <ResponsiveContainer>
+                  <BarChart data={revenueData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.borderStrong} />
+                    <XAxis dataKey="name" stroke={theme.textMuted} />
+                    <YAxis stroke={theme.textMuted} />
+                    <RechartsTooltip contentStyle={{ background: theme.surface, border: `1px solid ${theme.border}`, color: theme.textPrimary }} />
+                    <Legend />
+                    <Bar dataKey="cars" name="Cars Revenue (₹)" fill="#38bdf8" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="bikes" name="Bikes Revenue (₹)" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}`, marginTop: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', margin: 0 }}>Branch Performance</h3>
+                  <p style={{ color: theme.textMuted, fontSize: '0.8rem', margin: '6px 0 0' }}>Pickup, return and one-way rental demand</p>
+                </div>
+                <strong style={{ color: '#22c55e' }}>₹{Number(branchAnalytics.total_revenue || 0).toLocaleString('en-IN')} tracked</strong>
+              </div>
+              {branchAnalytics.branches.length === 0 ? (
+                <p style={{ color: theme.textMuted, marginBottom: 0 }}>No branch-tagged bookings found yet.</p>
+              ) : (
+                <div style={{ overflowX: 'auto', marginTop: '14px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead><tr>
+                      {['Branch', 'Pickup', 'Returns', 'One-way', 'Revenue'].map((heading) => <th key={heading} style={{ textAlign: 'left', padding: '9px', color: theme.textSoft, borderBottom: `1px solid ${theme.border}` }}>{heading}</th>)}
+                    </tr></thead>
+                    <tbody>{branchAnalytics.branches.map((branch) => (
+                      <tr key={branch.branch}>
+                        <td style={{ padding: '10px 9px', color: theme.textPrimary, fontWeight: 700 }}>{branch.branch}</td>
+                        <td style={{ padding: '10px 9px', color: theme.textMuted }}>{branch.pickup_bookings}</td>
+                        <td style={{ padding: '10px 9px', color: theme.textMuted }}>{branch.dropoff_bookings}</td>
+                        <td style={{ padding: '10px 9px', color: theme.textMuted }}>{branch.one_way_bookings}</td>
+                        <td style={{ padding: '10px 9px', color: '#22c55e', fontWeight: 700 }}>₹{Number(branch.revenue || 0).toLocaleString('en-IN')}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
 
-{/* 6. OVERDUE TRACKER TAB */}
+{/* 9. OVERDUE TRACKER TAB */}
 
 {activeTab === 'overdue' && (
   <div
@@ -3154,7 +4582,7 @@ const [verifications, setVerifications] = useState(() => {
   </div>
 )}
 
-        {/* 7. REGISTERED USERS TAB */}
+        {/* 10. REGISTERED USERS TAB */}
         {activeTab === 'users' && (
           <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
             <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', marginBottom: '15px' }}>Registered Platform Users</h3>
@@ -3191,7 +4619,7 @@ const [verifications, setVerifications] = useState(() => {
           </div>
         )}
 
-       {/* 8. DRIVER VERIFICATION TAB */}
+       {/* 11. DRIVER VERIFICATION TAB */}
 
 {activeTab === 'verification' && (
   <div
@@ -3230,6 +4658,7 @@ const [verifications, setVerifications] = useState(() => {
           >
             <th style={{ padding: '12px' }}>Driver Name</th>
             <th style={{ padding: '12px' }}>License No</th>
+            <th style={{ padding: '12px' }}>Document</th>
             <th style={{ padding: '12px' }}>Status</th>
             <th style={{ padding: '12px', textAlign: 'center' }}>
               Actions
@@ -3258,6 +4687,14 @@ const [verifications, setVerifications] = useState(() => {
 
                 <td style={{ padding: '12px' }}>
                   {v.licenseNo || v.licenseNumber || 'N/A'}
+                </td>
+
+                <td style={{ padding: '12px' }}>
+                  {v.documentUrl ? (
+                    <a href={v.documentUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 'bold' }}>
+                      View ID
+                    </a>
+                  ) : 'Not Provided'}
                 </td>
 
                 <td style={{ padding: '12px' }}>
@@ -3482,6 +4919,16 @@ const [verifications, setVerifications] = useState(() => {
             </div>
           </div>
         )}
+
+{/* DAMAGE REPORTS TAB (FEATURE 6) */}
+{activeTab === 'damage' && (
+  <div style={{ background: theme.cardBg, padding: '20px', borderRadius: '10px', border: `1px solid ${theme.border}` }}>
+    <h3 style={{ color: theme.textPrimary, fontSize: '1.1rem', margin: '0 0 15px 0' }}>Vehicle Damage Reports</h3>
+    <div style={{ color: theme.textSoft, fontSize: '0.85rem' }}>
+      Damage reports feature has been activated. Connect to backend to fetch live reports.
+    </div>
+  </div>
+)}
 
 {/* SETTINGS TAB */}
 {activeTab === 'settings' && (

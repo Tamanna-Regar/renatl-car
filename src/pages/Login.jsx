@@ -11,9 +11,7 @@ export default function Login() {
 
   const navigate = useNavigate();
 
-  // ==========================================
   // LOGIN
-  // ==========================================
   const handleLogin = async (e) => {
     e.preventDefault();
 
@@ -24,9 +22,9 @@ export default function Login() {
     const loginPassword = password.trim();
 
     try {
-      // ==========================================
+
       // ADMIN LOGIN
-      // ==========================================
+
       if (
         loginEmail === 'admin' ||
         loginEmail === 'admin@ridehub.com'
@@ -57,6 +55,7 @@ export default function Login() {
         }
 
         // Save admin login
+        localStorage.setItem('accessToken', data.token);
         localStorage.setItem(
           'isLoggedIn',
           'true'
@@ -98,9 +97,7 @@ export default function Login() {
         return;
       }
 
-      // ==========================================
       // EXISTING USER LOGIN FROM MONGODB
-      // ==========================================
 
       const response = await fetch(
         'http://127.0.0.1:8000/api/login',
@@ -120,9 +117,8 @@ export default function Login() {
 
       console.log('USER LOGIN RESPONSE:', data);
 
-      // ==========================================
       // LOGIN FAILED
-      // ==========================================
+
       if (!response.ok) {
         throw new Error(
           data.detail ||
@@ -130,10 +126,10 @@ export default function Login() {
         );
       }
 
-      // ==========================================
       // LOGIN SUCCESS
-      // ==========================================
+
       if (data.success) {
+        localStorage.setItem('accessToken', data.token);
         const loggedInUser = {
           ...data.user,
           role: 'user',
@@ -196,9 +192,8 @@ export default function Login() {
     }
   };
 
-  // ==========================================
   // UI
-  // ==========================================
+
   return (
     <div
       style={{
@@ -318,7 +313,7 @@ export default function Login() {
               margin: '0 0 6px 0',
             }}
           >
-            Welcome Back!
+            Welcome Back
           </h2>
 
           <p

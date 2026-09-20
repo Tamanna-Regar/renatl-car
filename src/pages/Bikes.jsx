@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
+// ⭐ STAR DISPLAY (read-only)
+function StarDisplay({ rating, count }) {
+  const filled = Math.round(rating);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+      {[1,2,3,4,5].map(s => (
+        <span key={s} style={{ color: s <= filled ? '#f59e0b' : '#d1d5db', fontSize: '13px' }}>★</span>
+      ))}
+      <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '2px' }}>
+        {rating > 0 ? `${rating.toFixed(1)}` : 'No ratings'}
+        {count > 0 ? ` (${count})` : ''}
+      </span>
+    </span>
+  );
+}
+
 export const bikesList = [
   {
     id: 1,
@@ -704,10 +720,8 @@ export const bikesList = [
   },
 ];
 
-/* =========================================================
-   BIKE DATA NORMALIZER
-   Existing bikes + Admin Dashboard se added bikes dono handle karega
-========================================================= */
+/* BIKE DATA NORMALIZER
+   Existing bikes + Admin Dashboard se added bikes dono handle karegan*/
 
 const normalizeBike = (bike, index = 0) => {
   const safeBike = bike || {};
@@ -775,9 +789,7 @@ const normalizeBike = (bike, index = 0) => {
   };
 };
 
-/* =========================================================
-   BIKES COMPONENT
-========================================================= */
+/* BIKES COMPONENT */
 
 export default function Bikes() {
   const [bikes, setBikes] = useState(() => {
@@ -816,9 +828,32 @@ export default function Bikes() {
     );
   });
 
-  /* =========================================================
-     LOAD ADMIN DASHBOARD BIKES FROM fleetVehicles
-  ========================================================= */
+  const [searchTerm, setSearchTerm] = useState('');
+  const [maxPrice, setMaxPrice] = useState(10000);
+
+  // ⭐ VEHICLE REVIEWS STATE
+  const [vehicleReviews, setVehicleReviews] = useState({});
+
+  useEffect(() => {
+    const loadReviews = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('vehicleReviews') || '{}');
+        setVehicleReviews(saved);
+      } catch (_) {}
+    };
+    loadReviews();
+    window.addEventListener('storage', loadReviews);
+    return () => window.removeEventListener('storage', loadReviews);
+  }, []);
+
+  const getAvgRating = (bikeName) => {
+    const reviews = vehicleReviews[bikeName] || [];
+    if (!reviews.length) return { avg: 0, count: 0 };
+    const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    return { avg, count: reviews.length };
+  };
+
+  /* LOAD ADMIN DASHBOARD BIKES FROM fleetVehicles */
 
   useEffect(() => {
     const loadFleetBikes = () => {
@@ -901,9 +936,7 @@ export default function Bikes() {
     };
   }, []);
 
-  /* =========================================================
-     CHECK AND RELEASE EXPIRED BOOKINGS ON LOAD
-  ========================================================= */
+  /* CHECK AND RELEASE EXPIRED BOOKINGS ON LOAD */
 
   useEffect(() => {
     const checkAndReleaseExpiredBookings = () => {
@@ -982,9 +1015,7 @@ export default function Bikes() {
     checkAndReleaseExpiredBookings();
   }, []);
 
-  /* =========================================================
-     SAVE BIKES TO LOCAL STORAGE
-  ========================================================= */
+  /* SAVE BIKES TO LOCAL STORAGE */
 
   useEffect(() => {
     try {
@@ -1000,12 +1031,23 @@ export default function Bikes() {
     }
   }, [bikes]);
 
-  /* =========================================================
-     RENDER
-  ========================================================= */
+  /* FILTERS */
+  const filteredBikes = bikes.filter((bike) => {
+    const bikeName = String(bike?.name || '').toLowerCase();
+    const bikeModel = String(bike?.specs?.model || '').toLowerCase();
+    const matchesSearch = bikeName.includes(searchTerm.toLowerCase()) || bikeModel.includes(searchTerm.toLowerCase());
+
+    const bikePriceRaw = String(bike?.price || '').replace(/[^0-9]/g, '');
+    const bikePrice = bikePriceRaw ? parseInt(bikePriceRaw, 10) : 0;
+    const matchesPrice = bikePrice <= maxPrice;
+
+    return matchesSearch && matchesPrice;
+  });
+
+  /* RENDER */
 
   return (
-    <div
+    <div className="catalog-page"
       style={{
         padding: '2rem',
         minHeight: '100vh',
@@ -1021,6 +1063,46 @@ export default function Bikes() {
         Available Bikes for Rent
       </h2>
 
+      {/* Search and Filter Controls */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '15px',
+          marginBottom: '25px',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Search bikes by name or model..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{
+            padding: '10px',
+            fontSize: '16px',
+            flex: '1',
+            maxWidth: '400px',
+            minWidth: '250px',
+            borderRadius: '4px',
+            border: '1px solid #ccc',
+          }}
+        />
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', padding: '0 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+          <label style={{fontWeight: 'bold', fontSize: '14px'}}>Max Price: ₹{maxPrice}</label>
+          <input
+            type="range"
+            min="1000"
+            max="15000"
+            step="500"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(e.target.value)}
+            style={{ cursor: 'pointer' }}
+          />
+        </div>
+      </div>
+
       <div
         style={{
           display: 'flex',
@@ -1030,7 +1112,7 @@ export default function Bikes() {
           justifyContent: 'center',
         }}
       >
-        {bikes.map((bike, index) => (
+        {filteredBikes.map((bike, index) => (
           <div
             key={bike.id || index}
             style={{
@@ -1066,12 +1148,20 @@ export default function Bikes() {
             <h3
               style={{
                 fontSize: '1.2rem',
-                margin: '12px 0 6px 0',
+                margin: '12px 0 4px 0',
                 fontWeight: 'bold',
               }}
             >
               {bike.name}
             </h3>
+
+            {/* ⭐ STAR RATING DISPLAY */}
+            <div style={{ margin: '0 0 6px', textAlign: 'center' }}>
+              {(() => {
+                const { avg, count } = getAvgRating(bike.name);
+                return <StarDisplay rating={avg} count={count} />;
+              })()}
+            </div>
 
             {/* PRICE */}
 
@@ -1224,6 +1314,19 @@ export default function Bikes() {
           </div>
         ))}
       </div>
+      
+      {/* NO RESULT */}
+      {filteredBikes.length === 0 && (
+        <p
+          style={{
+            textAlign: 'center',
+            color: '#718096',
+            marginTop: '40px',
+          }}
+        >
+          No bikes found matching your criteria.
+        </p>
+      )}
     </div>
   );
 }

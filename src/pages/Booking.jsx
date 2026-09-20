@@ -2,11 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { carsList } from './Cars';
 import { bikesList } from './Bikes';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://127.0.0.1:8000';
 
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+});
+
+function LocationPicker({ position, setPosition, setPickupLocation }) {
+  useMapEvents({
+    click(e) {
+      setPosition(e.latlng);
+      setPickupLocation(`${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`);
+    },
+  });
+  return position === null ? null : <Marker position={position}></Marker>;
+}
 
 export default function Booking() {
   const { type, id } = useParams();
@@ -14,15 +34,18 @@ export default function Booking() {
 
   const [item, setItem] = useState(null);
 
-  // =========================
   // BOOKING DATES
-  // =========================
+
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [pickupBranch, setPickupBranch] = useState('Delhi Central');
+  const [dropoffBranch, setDropoffBranch] = useState('Delhi Central');
+  const [pickupTime, setPickupTime] = useState('10:00');
+  const [returnTime, setReturnTime] = useState('10:00');
+  const [oneWay, setOneWay] = useState(false);
 
-  // =========================
   // CUSTOMER DETAILS
-  // =========================
+
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -31,17 +54,35 @@ export default function Booking() {
   const [state, setState] = useState('');
   const [zipCode, setZipCode] = useState('');
 
-  // =========================
   // TOTAL
-  // =========================
+
   const [totalAmount, setTotalAmount] = useState(0);
   const [totalDays, setTotalDays] = useState(0);
+  const [pricingBreakdown, setPricingBreakdown] = useState({
+    baseSubtotal: 0,
+    weekendSurcharge: 0,
+    peakSurcharge: 0,
+    addonsCost: 0,
+    discountAmount: 0,
+    subtotal: 0
+  });
+
+  // ADD-ONS (FEATURE 4)
+  const [addons, setAddons] = useState({ helmet: false, gps: false, insurance: false });
+  const ADDON_PRICES = { helmet: 50, gps: 100, insurance: 200 };
+
+  // PROMO & MAP
+  const [promoCode, setPromoCode] = useState('');
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [promoMessage, setPromoMessage] = useState('');
+  const [mapPosition, setMapPosition] = useState(null);
+  const [predictedPricing, setPredictedPricing] = useState(null);
+  const [geofenceCheck, setGeofenceCheck] = useState(null);
 
   const [loading, setLoading] = useState(false);
 
-  // =========================
   // LOAD LOGGED-IN USER
-  // =========================
+
   useEffect(() => {
     try {
       const savedUser = localStorage.getItem('user');
@@ -68,9 +109,8 @@ export default function Booking() {
     }
   }, []);
 
-  // =========================
   // LOAD VEHICLE
-  // =========================
+
   useEffect(() => {
     const defaultList =
       type === 'car' ? carsList : bikesList;
@@ -82,9 +122,8 @@ export default function Booking() {
 
     let currentList = [...defaultList];
 
-    // =========================
     // LOAD SAVED CARS / BIKES
-    // =========================
+
     try {
       const savedData =
         localStorage.getItem(listKey);
@@ -131,9 +170,8 @@ export default function Booking() {
       );
     }
 
-    // =========================
     // LOAD ADMIN FLEET VEHICLES
-    // =========================
+
     try {
       const fleetData =
         localStorage.getItem('fleetVehicles');
@@ -188,9 +226,8 @@ export default function Booking() {
       );
     }
 
-    // =========================
     // FIND VEHICLE
-    // =========================
+
     const found = currentList.find(
       (vehicle) =>
         String(vehicle.id) ===
@@ -200,13 +237,20 @@ export default function Booking() {
     setItem(found || null);
   }, [type, id]);
 
-  // =========================
   // CALCULATE PRICE
-  // =========================
+
   useEffect(() => {
     if (!startDate || !endDate || !item) {
       setTotalAmount(0);
       setTotalDays(0);
+      setPricingBreakdown({
+        baseSubtotal: 0,
+        weekendSurcharge: 0,
+        peakSurcharge: 0,
+        addonsCost: 0,
+        discountAmount: 0,
+        subtotal: 0
+      });
       return;
     }
 
@@ -232,19 +276,95 @@ export default function Booking() {
           )
         ) || 0;
 
+      let baseSubtotal = diffDays * priceNumber;
+      let weekendSurcharge = 0;
+      let peakSurcharge = 0;
+      let addonsCost = 0;
+
+      for (let i = 0; i < diffDays; i += 1) {
+        const currentDay = new Date(start);
+        currentDay.setDate(start.getDate() + i);
+
+        if (currentDay.getDay() === 0 || currentDay.getDay() === 6) {
+          weekendSurcharge += priceNumber * 0.10;
+        }
+
+        const month = currentDay.getMonth() + 1;
+        if ([10, 11, 12, 1, 2].includes(month)) {
+          peakSurcharge += priceNumber * 0.15;
+        }
+      }
+
+      if (addons.helmet) addonsCost += ADDON_PRICES.helmet * diffDays;
+      if (addons.gps) addonsCost += ADDON_PRICES.gps * diffDays;
+      if (addons.insurance) addonsCost += ADDON_PRICES.insurance * diffDays;
+
+      const subtotal = baseSubtotal + weekendSurcharge + peakSurcharge + addonsCost;
+      const discountAmount = discountPercent > 0 ? subtotal * (discountPercent / 100) : 0;
+      const calculatedTotal = subtotal - discountAmount;
+
       setTotalDays(diffDays);
-      setTotalAmount(
-        diffDays * priceNumber
-      );
+      setPricingBreakdown({
+        baseSubtotal,
+        weekendSurcharge,
+        peakSurcharge,
+        addonsCost,
+        discountAmount,
+        subtotal
+      });
+      setTotalAmount(calculatedTotal);
     } else {
       setTotalDays(0);
       setTotalAmount(0);
+      setPricingBreakdown({
+        baseSubtotal: 0,
+        weekendSurcharge: 0,
+        peakSurcharge: 0,
+        addonsCost: 0,
+        discountAmount: 0,
+        subtotal: 0
+      });
     }
-  }, [startDate, endDate, item]);
+  }, [startDate, endDate, item, discountPercent, addons]);
 
-  // =========================
+  useEffect(() => {
+    if (!startDate || !endDate || !item) {
+      setPredictedPricing(null);
+      return;
+    }
+
+    const runPredictivePricing = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/pricing/predictive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vehicle_id: String(item.id),
+            vehicle_type: type || 'car',
+            start_date: startDate,
+            end_date: endDate,
+            base_price: getPrice(),
+            city: city || 'Delhi'
+          })
+        });
+
+        const data = await response.json();
+        if (response.ok && data.success) {
+          setPredictedPricing(data);
+        } else {
+          setPredictedPricing(null);
+        }
+      } catch (error) {
+        console.error('Predictive pricing fetch failed:', error);
+        setPredictedPricing(null);
+      }
+    };
+
+    runPredictivePricing();
+  }, [startDate, endDate, item, type, city]);
+
   // GET PRICE
-  // =========================
+
   const getPrice = () => {
     return (
       parseInt(
@@ -256,9 +376,8 @@ export default function Booking() {
     );
   };
 
-  // =========================
   // VEHICLE SPECS
-  // =========================
+
   const getSeats = () => {
     return (
       item?.seats ||
@@ -292,22 +411,106 @@ export default function Booking() {
     );
   };
 
-  // =========================
   // TODAY
-  // =========================
+
   const today = new Date()
     .toISOString()
     .split('T')[0];
 
-  // =========================
+  // APPLY PROMO
+
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/api/promo/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() })
+      });
+      const data = await res.json();
+      if (data.valid) {
+        setDiscountPercent(data.discount_percentage);
+        setPromoMessage(`Promo applied! ${data.discount_percentage}% off`);
+      } else {
+        setDiscountPercent(0);
+        setPromoMessage(data.message || 'Invalid Promo');
+      }
+    } catch (e) {
+      setDiscountPercent(0);
+      setPromoMessage('Error validating promo');
+    }
+  };
+
+  const checkVehicleAvailability = async () => {
+    if (!item || !startDate || !endDate) {
+      return true;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/vehicles/${encodeURIComponent(item.id)}/availability?start_date=${startDate}&end_date=${endDate}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Unable to verify availability');
+      }
+
+      if (!data.available) {
+        alert(
+          'This vehicle is already booked for the selected dates. Please choose another date range.'
+        );
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Availability check failed:', error);
+      alert(
+        'Unable to verify vehicle availability right now. Please try again.'
+      );
+      return false;
+    }
+  };
+
+  const checkPickupGeofence = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/geofence/check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          city: city.trim(),
+          state: state.trim(),
+          vehicle_id: String(item?.id || ''),
+          latitude: mapPosition?.lat ?? null,
+          longitude: mapPosition?.lng ?? null,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Unable to validate pickup location');
+      }
+      setGeofenceCheck(data);
+      if (!data.allowed) {
+        alert(data.message || 'This pickup location is not allowed.');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error('Geofence check failed:', error);
+      alert('Unable to validate pickup location right now. Please try again.');
+      return false;
+    }
+  };
+
   // CONFIRM BOOKING
-  // =========================
+
   const handleConfirmBooking = async (e) => {
     e.preventDefault();
 
-    // =========================
     // VALIDATION
-    // =========================
+
     if (!startDate || !endDate) {
       alert(
         'Please select Pickup Date and Return Date!'
@@ -393,12 +596,22 @@ export default function Booking() {
       return;
     }
 
+    const isAvailable = await checkVehicleAvailability();
+    if (!isAvailable) {
+      return;
+    }
+
+    const isPickupAllowed = await checkPickupGeofence();
+    if (!isPickupAllowed) {
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // =========================
+
       // CALCULATE DAYS
-      // =========================
+
       const start = new Date(startDate);
       const end = new Date(endDate);
 
@@ -417,21 +630,24 @@ export default function Booking() {
       const calculatedTotal =
         calculatedDays * priceNumber;
 
-      // =========================
       // CLEAN EMAIL
-      // =========================
+
       const cleanEmail =
         email.trim().toLowerCase();
 
-      // =========================
       // BOOKING ID
-      // =========================
+      // Yeh sirf FALLBACK hai agar backend call fail ho jaye.
+      // NOTE: Yeh valid MongoDB ObjectId NAHI hai, isliye agar
+      // yehi ID Payment page tak pahunchi, toh payment-intent
+      // banate waqt "Invalid booking ID" error aayega.
+
       let bookingId =
         'BKG_' + Date.now();
 
-      // =========================
+      let bookingSavedOnServer = false;
+
       // SEND TO FASTAPI
-      // =========================
+
       try {
         const response = await fetch(
           `${API_URL}/api/bookings`,
@@ -482,6 +698,25 @@ export default function Booking() {
               zip_code:
                 zipCode.trim(),
 
+              pickup_latitude:
+                mapPosition?.lat ?? null,
+
+              pickup_longitude:
+                mapPosition?.lng ?? null,
+
+              geofence_status:
+                geofenceCheck?.status || 'approved',
+
+              geofence_message:
+                geofenceCheck?.message || '',
+
+              pickup_branch: pickupBranch,
+              dropoff_branch: oneWay ? dropoffBranch : pickupBranch,
+              pickup_time: pickupTime,
+              return_time: returnTime,
+              one_way: oneWay,
+              late_fee: 0,
+
               total_days:
                 calculatedDays,
 
@@ -511,17 +746,62 @@ export default function Booking() {
           if (data.booking_id) {
             bookingId =
               data.booking_id;
-          }
+            bookingSavedOnServer = true;
+
+              await fetch(`${API_URL}/api/notifications/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  booking_id: bookingId,
+                  user_email: cleanEmail,
+                  type: 'booking_created',
+                  title: 'Booking Confirmed',
+                  message: `Your booking for ${item.name} has been created successfully.`,
+                  channel: 'email'
+                })
+              });
+            }
+          } else {
+          // Server ne response diya, lekin error status ke saath
+          // (jaise 422, 500, etc). Yeh ab silently ignore nahi hoga.
+
+          const errData = await response
+            .json()
+            .catch(() => ({}));
+
+          console.error(
+            'Booking API failed. Status:',
+            response.status,
+            'Response:',
+            errData
+          );
         }
       } catch (err) {
-        console.log(
-          'Backend offline, using local storage backup.'
+        // Network/CORS/connection error — server tak request
+        // pahunchi hi nahi.
+
+        console.error(
+          'Booking creation network error:',
+          err
         );
       }
 
-      // =========================
+      // Agar backend par booking save NAHI hui, toh user ko
+      // clearly bata do, kyunki fake local ID ke saath Payment
+      // page kaam nahi karega (booking DB mein exist nahi karti).
+
+      if (!bookingSavedOnServer) {
+        alert(
+          'Booking could not be saved to the server. ' +
+          'Please check your internet/server connection and try again. ' +
+          '(Payment cannot proceed without a valid server booking.)'
+        );
+        setLoading(false);
+        return;
+      }
+
       // COMPLETE BOOKING OBJECT
-      // =========================
+
       const newBookingObj = {
         bookingId:
           bookingId,
@@ -557,6 +837,12 @@ export default function Booking() {
         pickupLocation:
           pickupLocation.trim(),
 
+        pickupBranch,
+        dropoffBranch: oneWay ? dropoffBranch : pickupBranch,
+        pickupTime,
+        returnTime,
+        oneWay,
+
         city:
           city.trim(),
 
@@ -575,9 +861,8 @@ export default function Booking() {
         totalAmount:
           calculatedTotal,
 
-        // =========================
         // PAYMENT STATUS
-        // =========================
+
         status:
           'Pending Payment',
 
@@ -597,9 +882,8 @@ export default function Booking() {
           new Date().toISOString()
       };
 
-      // =========================
       // SAVE FOR ADMIN
-      // =========================
+
       const existingAdminBookings =
         JSON.parse(
           localStorage.getItem(
@@ -615,9 +899,8 @@ export default function Booking() {
         ])
       );
 
-      // =========================
       // SAVE FOR USER
-      // =========================
+
       const userKey =
         `userBookings_${cleanEmail}`;
 
@@ -636,9 +919,8 @@ export default function Booking() {
         ])
       );
 
-      // =========================
       // ALSO UPDATE OLD userBookings
-      // =========================
+
       const oldUserBookings =
         JSON.parse(
           localStorage.getItem(
@@ -654,11 +936,8 @@ export default function Booking() {
         ])
       );
 
-      // =========================
       // UPDATE VEHICLE STATUS
-      // IMPORTANT:
-      // PAYMENT SE PEHLE BOOKED NAHI
-      // =========================
+
       const listKey =
         type === 'car'
           ? 'rentEasyCarsList'
@@ -713,13 +992,21 @@ export default function Booking() {
 
                 // PAYMENT SE PEHLE
                 // VEHICLE AVAILABLE
-                isBooked: false,
+                isBooked: true,
 
                 status:
-                  'available',
+                  'booked',
 
-                bookingDetails:
-                  newBookingObj
+             bookingDetails: {
+                  bookingId: newBookingObj.bookingId,
+                  userEmail: cleanEmail,
+                  userName: fullName.trim(),
+                  startDate: startDate,
+                  endDate: endDate,
+                  totalAmount: calculatedTotal,
+                  status: 'Pending Payment',
+                  image: item.image || FALLBACK_IMAGE
+                }
               };
             }
 
@@ -727,9 +1014,8 @@ export default function Booking() {
           }
         );
 
-      // =========================
       // CUSTOM VEHICLES
-      // =========================
+
       const customVehicles =
         savedList.filter(
           (saved) =>
@@ -740,9 +1026,8 @@ export default function Booking() {
             )
         );
 
-      // =========================
       // UPDATE RENT EASY LIST
-      // =========================
+
       localStorage.setItem(
         listKey,
         JSON.stringify([
@@ -751,10 +1036,9 @@ export default function Booking() {
         ])
       );
 
-      // =========================
       // UPDATE FLEET VEHICLES
       // PAYMENT SE PEHLE AVAILABLE
-      // =========================
+
       try {
         const fleetData =
           localStorage.getItem(
@@ -812,9 +1096,8 @@ export default function Booking() {
         );
       }
 
-      // =========================
       // REFRESH COMPONENTS
-      // =========================
+
       window.dispatchEvent(
         new Event(
           type === 'car'
@@ -835,9 +1118,8 @@ export default function Booking() {
         )
       );
 
-      // =========================
       // GO TO PAYMENT
-      // =========================
+
       navigate('/payment', {
         state: {
           booking:
@@ -859,9 +1141,8 @@ export default function Booking() {
     }
   };
 
-  // =========================
   // ITEM NOT FOUND
-  // =========================
+
   if (!item) {
     return (
       <div
@@ -904,9 +1185,8 @@ export default function Booking() {
     );
   }
 
-  // =========================
   // UI
-  // =========================
+
   return (
     <div
       style={{
@@ -924,9 +1204,7 @@ export default function Booking() {
         }}
       >
 
-        {/* =======================
-            BACK BUTTON
-        ======================= */}
+        {/* BACK BUTTON */}
         <button
           type="button"
           onClick={() =>
@@ -953,9 +1231,7 @@ export default function Booking() {
           ←
         </button>
 
-        {/* =======================
-            MAIN GRID
-        ======================= */}
+        {/* MAIN GRID */}
         <div
           style={{
             display: 'grid',
@@ -967,9 +1243,7 @@ export default function Booking() {
           }}
         >
 
-          {/* =====================
-              LEFT SIDE
-          ===================== */}
+          {/* LEFT SIDE */}
           <div>
 
             {/* VEHICLE IMAGE */}
@@ -1066,9 +1340,7 @@ export default function Booking() {
               </span>
             </div>
 
-            {/* ===================
-                VEHICLE SPECS
-            =================== */}
+            {/* VEHICLE SPECS */}
             <div
               style={{
                 display:
@@ -1249,9 +1521,7 @@ export default function Booking() {
               </div>
             </div>
 
-            {/* ===================
-                ABOUT CAR
-            =================== */}
+            {/* ABOUT CAR */}
             <div
               style={{
                 marginTop:
@@ -1291,9 +1561,7 @@ export default function Booking() {
             </div>
           </div>
 
-          {/* =====================
-              RIGHT BOOKING CARD
-          ===================== */}
+          {/* RIGHT BOOKING CARD */}
           <div
             style={{
               background:
@@ -1373,9 +1641,7 @@ export default function Booking() {
                 }
               >
 
-                {/* =================
-                    DATES
-                ================= */}
+                {/* DATES */}
                 <div
                   style={{
                     display:
@@ -1490,9 +1756,36 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {/* =================
-                    PICKUP LOCATION
-                ================= */}
+                <div style={{ marginBottom: '14px', background: '#182534', padding: '14px', borderRadius: '8px', border: '1px solid #334152' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', fontSize: '13px', fontWeight: '700', marginBottom: '12px' }}>
+                    <input type="checkbox" checked={oneWay} onChange={(e) => setOneWay(e.target.checked)} />
+                    One-way rental (different return branch)
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    <label style={{ color: '#aeb6c2', fontSize: '12px' }}>
+                      Pickup branch
+                      <select value={pickupBranch} onChange={(e) => setPickupBranch(e.target.value)} style={{ width: '100%', marginTop: '6px', padding: '10px', background: '#151e28', color: '#fff', border: '1px solid #334152', borderRadius: '7px' }}>
+                        <option>Delhi Central</option><option>Noida Sector 18</option><option>Gurgaon Cyber Hub</option><option>Jaipur Airport</option>
+                      </select>
+                    </label>
+                    <label style={{ color: '#aeb6c2', fontSize: '12px' }}>
+                      Return branch
+                      <select value={dropoffBranch} onChange={(e) => setDropoffBranch(e.target.value)} disabled={!oneWay} style={{ width: '100%', marginTop: '6px', padding: '10px', background: '#151e28', color: '#fff', border: '1px solid #334152', borderRadius: '7px' }}>
+                        <option>Delhi Central</option><option>Noida Sector 18</option><option>Gurgaon Cyber Hub</option><option>Jaipur Airport</option>
+                      </select>
+                    </label>
+                    <label style={{ color: '#aeb6c2', fontSize: '12px' }}>
+                      Pickup time
+                      <input type="time" value={pickupTime} onChange={(e) => setPickupTime(e.target.value)} style={{ width: '100%', marginTop: '6px', padding: '10px', boxSizing: 'border-box', background: '#151e28', color: '#fff', border: '1px solid #334152', borderRadius: '7px' }} />
+                    </label>
+                    <label style={{ color: '#aeb6c2', fontSize: '12px' }}>
+                      Return time
+                      <input type="time" value={returnTime} onChange={(e) => setReturnTime(e.target.value)} style={{ width: '100%', marginTop: '6px', padding: '10px', boxSizing: 'border-box', background: '#151e28', color: '#fff', border: '1px solid #334152', borderRadius: '7px' }} />
+                    </label>
+                  </div>
+                </div>
+
+                {/* PICKUP LOCATION WITH MAP */}
                 <div
                   style={{
                     marginBottom:
@@ -1511,12 +1804,19 @@ export default function Booking() {
                         '6px'
                     }}
                   >
-                    Pickup Location
+                    Select Pickup Location on Map
                   </label>
+
+                  <div style={{ height: '200px', width: '100%', borderRadius: '7px', overflow: 'hidden', border: '1px solid #334152', marginBottom: '10px' }}>
+                    <MapContainer center={[20.5937, 78.9629]} zoom={4} style={{ height: '100%', width: '100%' }}>
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <LocationPicker position={mapPosition} setPosition={setMapPosition} setPickupLocation={setPickupLocation} />
+                    </MapContainer>
+                  </div>
 
                   <input
                     type="text"
-                    placeholder="Enter pickup location"
+                    placeholder="Enter pickup location or click on map"
                     value={
                       pickupLocation
                     }
@@ -1547,9 +1847,31 @@ export default function Booking() {
                   />
                 </div>
 
-                {/* =================
-                    FULL NAME
-                ================= */}
+                {geofenceCheck && (
+                  <div
+                    style={{
+                      marginBottom: '14px',
+                      padding: '10px 12px',
+                      borderRadius: '7px',
+                      border: `1px solid ${geofenceCheck.allowed ? '#2563eb' : '#dc2626'}`,
+                      background: geofenceCheck.allowed ? '#10233f' : '#3a1717',
+                      color: '#dbeafe',
+                      fontSize: '12px',
+                    }}
+                  >
+                    <strong>
+                      {geofenceCheck.allowed ? 'Location check passed' : 'Location blocked'}
+                    </strong>
+                    <div style={{ marginTop: '4px' }}>{geofenceCheck.message}</div>
+                    {geofenceCheck.warnings?.map((warning, index) => (
+                      <div key={`${warning}-${index}`} style={{ marginTop: '4px', color: '#fde68a' }}>
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* FULL NAME */}
                 <div
                   style={{
                     marginBottom:
@@ -1604,9 +1926,7 @@ export default function Booking() {
                   />
                 </div>
 
-                {/* =================
-                    EMAIL + PHONE
-                ================= */}
+                {/* EMAIL + PHONE */}
                 <div
                   style={{
                     display:
@@ -1718,9 +2038,7 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {/* =================
-                    CITY STATE ZIP
-                ================= */}
+                {/* CITY STATE ZIP */}
                 <div
                   style={{
                     display:
@@ -1881,9 +2199,68 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {/* =================
-                    PRICE SUMMARY
-                ================= */}
+                {/* ADD-ONS SECTION (FEATURE 4) */}
+                <div style={{ marginBottom: '16px', background: '#1a2430', padding: '15px', borderRadius: '8px', border: '1px solid #334152' }}>
+                  <label style={{ display: 'block', color: '#aeb6c2', fontSize: '13px', fontWeight: 'bold', marginBottom: '10px' }}>
+                    Extras & Add-ons (Per Day)
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ color: '#fff', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={addons.helmet} 
+                        onChange={(e) => setAddons({ ...addons, helmet: e.target.checked })} 
+                      />
+                      ⛑️ Helmet (+₹{ADDON_PRICES.helmet}/day)
+                    </label>
+                    <label style={{ color: '#fff', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={addons.gps} 
+                        onChange={(e) => setAddons({ ...addons, gps: e.target.checked })} 
+                      />
+                      📍 GPS Navigation (+₹{ADDON_PRICES.gps}/day)
+                    </label>
+                    <label style={{ color: '#fff', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={addons.insurance} 
+                        onChange={(e) => setAddons({ ...addons, insurance: e.target.checked })} 
+                      />
+                      🛡️ Premium Insurance (+₹{ADDON_PRICES.insurance}/day)
+                    </label>
+                  </div>
+                </div>
+
+                {/* PROMO CODE SECTION */}
+                <div style={{ marginBottom: '14px', display: 'flex', gap: '10px' }}>
+                  <input
+                    type="text"
+                    placeholder="Promo Code"
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value)}
+                    style={{ flex: 1, padding: '11px', background: '#151e28', color: '#fff', border: '1px solid #334152', borderRadius: '7px' }}
+                  />
+                  <button type="button" onClick={handleApplyPromo} style={{ padding: '0 15px', background: '#ff8500', color: '#fff', border: 'none', borderRadius: '7px', cursor: 'pointer', fontWeight: 'bold' }}>Apply</button>
+                </div>
+                {promoMessage && <p style={{ color: discountPercent > 0 ? '#20d77a' : '#ff9aa5', fontSize: '13px', marginTop: '-10px', marginBottom: '14px' }}>{promoMessage}</p>}
+
+                {predictedPricing && (
+                  <div style={{ marginBottom: '14px', background: '#182534', border: '1px solid #2c4d72', borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span style={{ color: '#8ad5ff', fontWeight: '700', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>AI Pricing Signal</span>
+                      <span style={{ color: '#20d77a', fontWeight: '700', fontSize: '12px' }}>{predictedPricing.forecast_label}</span>
+                    </div>
+                    <div style={{ color: '#ebf3ff', fontSize: '14px', marginBottom: '6px' }}>
+                      Suggested rate: <strong>Rs {predictedPricing.recommended_rate_per_day}</strong> / day
+                    </div>
+                    <div style={{ color: '#b8c0cc', fontSize: '12px' }}>
+                      Demand forecast: {predictedPricing.adjustment_percent > 0 ? '+' : ''}{predictedPricing.adjustment_percent}% vs base fare for {predictedPricing.city}
+                    </div>
+                  </div>
+                )}
+
+                {/* PRICE SUMMARY */}
                 <div
                   style={{
                     background:
@@ -1923,28 +2300,153 @@ export default function Booking() {
                   </div>
 
                   {totalDays > 0 && (
-                    <div
-                      style={{
-                        display:
-                          'flex',
-                        justifyContent:
-                          'space-between',
-                        color:
-                          '#b8c0cc',
-                        fontSize:
-                          '13px',
-                        marginBottom:
-                          '8px'
-                      }}
-                    >
-                      <span>
-                        Total Days
-                      </span>
+                    <>
+                      <div
+                        style={{
+                          display:
+                            'flex',
+                          justifyContent:
+                            'space-between',
+                          color:
+                            '#b8c0cc',
+                          fontSize:
+                            '13px',
+                          marginBottom:
+                            '8px'
+                        }}
+                      >
+                        <span>
+                          Total Days
+                        </span>
 
-                      <span>
-                        {totalDays}
-                      </span>
-                    </div>
+                        <span>
+                          {totalDays}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display:
+                            'flex',
+                          justifyContent:
+                            'space-between',
+                          color:
+                            '#b8c0cc',
+                          fontSize:
+                            '12px',
+                          marginBottom:
+                            '6px'
+                        }}
+                      >
+                        <span>
+                          Base fare
+                        </span>
+
+                        <span>
+                          Rs {pricingBreakdown.baseSubtotal}
+                        </span>
+                      </div>
+
+                      {pricingBreakdown.weekendSurcharge > 0 && (
+                        <div
+                          style={{
+                            display:
+                              'flex',
+                            justifyContent:
+                              'space-between',
+                            color:
+                              '#b8c0cc',
+                            fontSize:
+                              '12px',
+                            marginBottom:
+                              '6px'
+                          }}
+                        >
+                          <span>
+                            Weekend surcharge
+                          </span>
+
+                          <span>
+                            +Rs {pricingBreakdown.weekendSurcharge}
+                          </span>
+                        </div>
+                      )}
+
+                      {pricingBreakdown.peakSurcharge > 0 && (
+                        <div
+                          style={{
+                            display:
+                              'flex',
+                            justifyContent:
+                              'space-between',
+                            color:
+                              '#b8c0cc',
+                            fontSize:
+                              '12px',
+                            marginBottom:
+                              '6px'
+                          }}
+                        >
+                          <span>
+                            Peak season charge
+                          </span>
+
+                          <span>
+                            +Rs {pricingBreakdown.peakSurcharge}
+                          </span>
+                        </div>
+                      )}
+
+                      {pricingBreakdown.addonsCost > 0 && (
+                        <div
+                          style={{
+                            display:
+                              'flex',
+                            justifyContent:
+                              'space-between',
+                            color:
+                              '#b8c0cc',
+                            fontSize:
+                              '12px',
+                            marginBottom:
+                              '6px'
+                          }}
+                        >
+                          <span>
+                            Add-ons
+                          </span>
+
+                          <span>
+                            +Rs {pricingBreakdown.addonsCost}
+                          </span>
+                        </div>
+                      )}
+
+                      {pricingBreakdown.discountAmount > 0 && (
+                        <div
+                          style={{
+                            display:
+                              'flex',
+                            justifyContent:
+                              'space-between',
+                            color:
+                              '#b8c0cc',
+                            fontSize:
+                              '12px',
+                            marginBottom:
+                              '8px'
+                          }}
+                        >
+                          <span>
+                            Discount
+                          </span>
+
+                          <span>
+                            -Rs {pricingBreakdown.discountAmount}
+                          </span>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <div
@@ -1980,9 +2482,7 @@ export default function Booking() {
                   </div>
                 </div>
 
-                {/* =================
-                    PAYMENT BUTTON
-                ================= */}
+                {/* PAYMENT BUTTON */}
                 <button
                   type="submit"
                   disabled={loading}

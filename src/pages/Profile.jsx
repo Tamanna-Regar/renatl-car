@@ -23,15 +23,16 @@ export default function Profile() {
     email: '',
     phone: '',
     address: '',
+    documentUrl: '',
   });
+
+  const [verificationStatus, setVerificationStatus] = useState('Unverified');
 
   const [bookings, setBookings] = useState([]);
   const [message, setMessage] = useState('');
 
-  // =========================
   // LOAD PROFILE + BOOKINGS
-  // =========================
-  const loadProfile = () => {
+  const loadProfile = async () => {
     const storedUser = readJSON('user', {});
 
     setUser(storedUser);
@@ -41,7 +42,27 @@ export default function Profile() {
       email: storedUser?.email || '',
       phone: storedUser?.phone || '',
       address: storedUser?.address || '',
+      documentUrl: storedUser?.documentUrl || '',
     });
+
+    const savedStatus = storedUser?.verificationStatus || storedUser?.docStatus || 'Unverified';
+    setVerificationStatus(savedStatus);
+
+    if (storedUser?.email) {
+      try {
+        const res = await fetch(`${'http://127.0.0.1:8000'}/api/users/${encodeURIComponent(storedUser.email)}/verification`);
+        const data = await res.json();
+        if (data.success && data.verificationStatus) {
+          setVerificationStatus(data.verificationStatus);
+          const normalizedUser = { ...storedUser, verificationStatus: data.verificationStatus, docStatus: data.verificationStatus, documentUrl: data.documentUrl || storedUser.documentUrl || '' };
+          setUser(normalizedUser);
+          localStorage.setItem('user', JSON.stringify(normalizedUser));
+          setFormData((prev) => ({ ...prev, documentUrl: data.documentUrl || prev.documentUrl }));
+        }
+      } catch (error) {
+        console.error('Verification fetch failed:', error);
+      }
+    }
 
     const allBookings = readJSON('allBookings', []);
     const userBookings = readJSON('userBookings', []);
@@ -116,9 +137,7 @@ export default function Profile() {
     };
   }, []);
 
-  // =========================
-  // BOOKING STATS
-  // =========================
+  // BOOKING STAT
   const bookingStats = useMemo(() => {
     const total = bookings.length;
 
@@ -158,9 +177,7 @@ export default function Profile() {
     };
   }, [bookings]);
 
-  // =========================
   // PROFILE INITIALS
-  // =========================
   const initials = useMemo(() => {
     const name = formData.name || 'Ride Easy User';
 
@@ -172,9 +189,7 @@ export default function Profile() {
       .join('');
   }, [formData.name]);
 
-  // =========================
   // HANDLE INPUT
-  // =========================
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -186,11 +201,12 @@ export default function Profile() {
     setMessage('');
   };
 
-  // =========================
   // SAVE PROFILE
-  // =========================
-  const handleSaveProfile = (e) => {
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
+
+    const isNewDoc = formData.documentUrl.trim() && formData.documentUrl.trim() !== (user?.documentUrl || '');
+    const newStatus = isNewDoc ? 'Pending Review' : (user?.verificationStatus || user?.docStatus || 'Unverified');
 
     const updatedUser = {
       ...user,
@@ -199,6 +215,9 @@ export default function Profile() {
       email: formData.email.trim(),
       phone: formData.phone.trim(),
       address: formData.address.trim(),
+      documentUrl: formData.documentUrl.trim(),
+      verificationStatus: newStatus,
+      docStatus: newStatus
     };
 
     localStorage.setItem(
@@ -206,7 +225,34 @@ export default function Profile() {
       JSON.stringify(updatedUser)
     );
 
+    // Save to all users for admin
+    const allUsers = readJSON('registeredUsers', []);
+    const userIndex = allUsers.findIndex(u => u.email === updatedUser.email);
+    if (userIndex > -1) {
+      allUsers[userIndex] = { ...allUsers[userIndex], ...updatedUser, docStatus: newStatus, verificationStatus: newStatus };
+    } else {
+      allUsers.push({ ...updatedUser, docStatus: newStatus, verificationStatus: newStatus });
+    }
+    localStorage.setItem('registeredUsers', JSON.stringify(allUsers));
+
+    setVerificationStatus(newStatus);
     setUser(updatedUser);
+
+    try {
+      if (updatedUser.email) {
+        await fetch(`http://127.0.0.1:8000/api/users/${encodeURIComponent(updatedUser.email)}/verification`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            documentUrl: formData.documentUrl.trim(),
+            verificationStatus: newStatus,
+          }),
+        });
+      }
+    } catch (error) {
+      console.error('Profile verification sync failed:', error);
+    }
+
     setMessage('Profile updated successfully.');
 
     window.dispatchEvent(
@@ -214,9 +260,7 @@ export default function Profile() {
     );
   };
 
-  // =========================
   // LOGOUT
-  // =========================
   const handleLogout = () => {
     localStorage.removeItem('user');
     localStorage.removeItem('currentUser');
@@ -225,9 +269,8 @@ export default function Profile() {
     navigate('/login');
   };
 
-  // =========================
   // BOOKING HELPERS
-  // =========================
+
   const getBookingStatus = (booking) =>
     String(
       booking?.status ||
@@ -282,7 +325,7 @@ export default function Profile() {
   };
 
   return (
-    <div
+    <div className="profile-page"
       style={{
         minHeight: '100vh',
         background: '#f4f7fb',
@@ -291,15 +334,13 @@ export default function Profile() {
         color: '#111827',
       }}
     >
-      <div
+      <div className="profile-container"
         style={{
           maxWidth: '1100px',
           margin: '0 auto',
         }}
       >
-        {/* =========================
-            HEADER
-        ========================== */}
+        {/* HEADER */}
         <div
           style={{
             display: 'flex',
@@ -353,9 +394,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* =========================
-            MAIN GRID
-        ========================== */}
+        {/* MAIN GRID */}
         <div
           className="profile-main-grid"
           style={{
@@ -364,9 +403,7 @@ export default function Profile() {
             gap: '22px',
           }}
         >
-          {/* =========================
-              PROFILE CARD
-          ========================== */}
+          {/* PROFILE CARD */}
           <div
             style={{
               background: '#fff',
@@ -396,6 +433,7 @@ export default function Profile() {
             >
               {initials}
             </div>
+            </div>
 
             <h2
               style={{
@@ -415,6 +453,19 @@ export default function Profile() {
             >
               {formData.email || 'No email available'}
             </p>
+
+            <div style={{ marginTop: '10px' }}>
+              <span style={{ 
+                padding: '4px 10px', 
+                borderRadius: '12px', 
+                fontSize: '12px', 
+                fontWeight: 'bold',
+                background: verificationStatus === 'Verified' ? '#dcfce7' : (verificationStatus === 'Rejected' ? '#fee2e2' : '#fef3c7'),
+                color: verificationStatus === 'Verified' ? '#166534' : (verificationStatus === 'Rejected' ? '#991b1b' : '#92400e')
+              }}>
+                {verificationStatus} User
+              </span>
+            </div>
 
             {/* BOOKING STATS */}
             <div
@@ -538,9 +589,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* =========================
-              RIGHT SIDE
-          ========================== */}
+          {/* RIGHT SIDE */}
           <div
             style={{
               display: 'grid',
@@ -693,6 +742,38 @@ export default function Profile() {
                         fontSize: '0.95rem',
                       }}
                     />
+                  </div>
+
+                  {/* DOCUMENT URL */}
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        marginBottom: '7px',
+                        fontWeight: '700',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      Driver License / ID Image URL
+                    </label>
+
+                    <input
+                      name="documentUrl"
+                      type="url"
+                      value={formData.documentUrl}
+                      onChange={handleChange}
+                      placeholder="https://example.com/my-license.jpg"
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        padding: '11px 12px',
+                        border:
+                          '1px solid #d1d5db',
+                        borderRadius: '8px',
+                        fontSize: '0.95rem',
+                      }}
+                    />
+                    <p style={{ margin: '5px 0 0', fontSize: '12px', color: '#6b7280' }}>Submit a valid ID URL for admin verification.</p>
                   </div>
                 </div>
 
@@ -955,8 +1036,6 @@ export default function Profile() {
               )}
             </div>
           </div>
-        </div>
-
         {/* FOOTER */}
         <div
           style={{

@@ -37,9 +37,7 @@ export default function Register() {
     setLoading(true);
 
     try {
-      // ==========================================
-      // REGISTER USER IN MONGODB
-      // ==========================================
+       // REGISTER USER IN MONGODB
 
       const response = await fetch(
         'http://127.0.0.1:8000/api/register',
@@ -67,10 +65,8 @@ export default function Register() {
           data.detail || 'Registration failed'
         );
       }
-
-      // ==========================================
+      
       // REGISTRATION SUCCESS
-      // ==========================================
 
       alert('Registration successful! Please login.');
 

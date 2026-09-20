@@ -9,7 +9,7 @@ import {
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
-import Home from './pages/Home';
+import Home from './pages/home';
 import Cars from './pages/Cars';
 import Bikes from './pages/Bikes';
 
@@ -21,6 +21,9 @@ import Payment from './pages/payment';
 
 import MyBookings from './pages/MyBookings';
 import Profile from './pages/Profile';
+import Wallet from './pages/Wallet';
+import DamageReport from './pages/DamageReport';
+import Inspection from './pages/Inspection';
 
 import AdminDashboard from './pages/AdminDashboard';
 
@@ -39,21 +42,10 @@ function Layout() {
     );
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        backgroundColor: '#090d16'
-      }}
-    >
+    <div className="app-shell">
       {showNavbar && <Navbar />}
 
-      <div
-        style={{
-          flex: 1
-        }}
-      >
+      <div style={{ flex: 1 }}>
         <Routes>
 
           {/* HOME */}
@@ -112,6 +104,35 @@ function Layout() {
             element={
               <ProtectedRoute requiredRole="user">
                 <MyBookings />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* WALLET */}
+          <Route
+            path="/wallet"
+            element={
+              <ProtectedRoute requiredRole="user">
+                <Wallet />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* DAMAGE REPORT */}
+          <Route
+            path="/damage-report/:bookingId"
+            element={
+              <ProtectedRoute requiredRole="user">
+                <DamageReport />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/inspection/:bookingId"
+            element={
+              <ProtectedRoute requiredRole="user">
+                <Inspection />
               </ProtectedRoute>
             }
           />

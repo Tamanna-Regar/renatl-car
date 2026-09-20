@@ -8,6 +8,37 @@ export default function Home() {
     bookings: 0,
     satisfaction: 0,
   });
+  const [tripType, setTripType] = useState('family');
+  const [passengers, setPassengers] = useState(4);
+  const [recommendations, setRecommendations] = useState([]);
+  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  const [corporateRequest, setCorporateRequest] = useState({
+    company_name: '',
+    company_email: '',
+    contact_person: '',
+    gst_number: '',
+    vehicle_name: 'Hyundai Creta',
+    vehicle_type: 'car',
+    start_date: '',
+    end_date: '',
+    passengers: 4,
+    billing_cycle: 'monthly',
+    invoice_required: true,
+    notes: '',
+  });
+  const [corporateMessage, setCorporateMessage] = useState('');
+  const [fraudRisk, setFraudRisk] = useState(null);
+  const [marketplaceListings, setMarketplaceListings] = useState([]);
+  const [marketplaceMessage, setMarketplaceMessage] = useState('');
+  const [marketplaceRequest, setMarketplaceRequest] = useState({
+    owner_name: '',
+    owner_email: '',
+    vehicle_name: '',
+    vehicle_type: 'car',
+    city: 'Delhi',
+    price_per_day: 2500,
+    seats: 4,
+  });
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -21,65 +52,330 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  const heroStyle = {
-    background: 'linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #7e22ce 100%)',
-    padding: '6rem 2rem',
-    color: '#fff',
-    textAlign: 'center',
-    minHeight: '80vh',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
+  const getRecommendations = async () => {
+    setIsLoadingRecommendations(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trip_type: tripType,
+          passengers,
+          duration_days: 3,
+          city: 'Delhi',
+          budget_per_day: 5000,
+        }),
+      });
+
+      const data = await response.json();
+      if (data?.recommendations) {
+        setRecommendations(data.recommendations);
+      }
+    } catch (error) {
+      console.error('Recommendation fetch failed', error);
+    } finally {
+      setIsLoadingRecommendations(false);
+    }
   };
 
-  const buttonStyle = {
-    padding: '1rem 2.5rem',
-    borderRadius: '10px',
-    textDecoration: 'none',
-    fontSize: '1.1rem',
-    fontWeight: 'bold',
-    transition: 'all 0.3s ease',
-    display: 'inline-block',
-    cursor: 'pointer',
+  const submitCorporateBooking = async (e) => {
+    e.preventDefault();
+    setCorporateMessage('');
+
+    try {
+      const response = await fetch('http://localhost:8000/api/corporate/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...corporateRequest,
+          vehicle_id: String(Date.now()),
+          vehicle_name: corporateRequest.vehicle_name,
+          vehicle_type: corporateRequest.vehicle_type,
+          passengers: Number(corporateRequest.passengers || 4),
+          invoice_required: Boolean(corporateRequest.invoice_required),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Corporate request failed');
+      }
+
+      setCorporateMessage(`Corporate request approved. Invoice: ${data.booking.invoice_number}. Total: ₹${Number(data.booking.total_amount).toLocaleString('en-IN')}`);
+      setCorporateRequest({
+        company_name: '',
+        company_email: '',
+        contact_person: '',
+        gst_number: '',
+        vehicle_name: 'Hyundai Creta',
+        vehicle_type: 'car',
+        start_date: '',
+        end_date: '',
+        passengers: 4,
+        billing_cycle: 'monthly',
+        invoice_required: true,
+        notes: '',
+      });
+
+      const riskResponse = await fetch('http://localhost:8000/api/fraud/risk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: corporateRequest.company_email,
+          phone: '9999999999',
+          city: 'Delhi',
+          vehicle_id: String(Date.now()),
+          booking_amount: Number(data.booking.total_amount || 0),
+          booking_days: Math.max(1, Math.ceil((new Date(corporateRequest.end_date) - new Date(corporateRequest.start_date)) / 86400000) + 1),
+          duplicate_attempts: 0,
+          verification_status: 'approved'
+        }),
+      });
+
+      if (riskResponse.ok) {
+        const riskData = await riskResponse.json();
+        setFraudRisk(riskData);
+      }
+    } catch (error) {
+      setCorporateMessage(error.message || 'Something went wrong');
+    }
   };
 
-  const carsButtonStyle = {
-    ...buttonStyle,
-    background: '#10b981',
-    color: '#fff',
-  };
+  useEffect(() => {
+    getRecommendations();
+    fetch('http://localhost:8000/api/marketplace/listings')
+      .then((response) => response.json())
+      .then((data) => setMarketplaceListings(data.listings || []))
+      .catch((error) => console.error('Marketplace listings fetch failed', error));
+  }, []);
 
-  const bikesButtonStyle = {
-    ...buttonStyle,
-    background: '#f59e0b',
-    color: '#fff',
+  const submitMarketplaceListing = async (event) => {
+    event.preventDefault();
+    setMarketplaceMessage('');
+    try {
+      const response = await fetch('http://localhost:8000/api/marketplace/listings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...marketplaceRequest,
+          price_per_day: Number(marketplaceRequest.price_per_day),
+          seats: Number(marketplaceRequest.seats),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || 'Listing submission failed');
+      setMarketplaceMessage(data.message);
+      setMarketplaceRequest({ ...marketplaceRequest, owner_name: '', owner_email: '', vehicle_name: '' });
+    } catch (error) {
+      setMarketplaceMessage(error.message || 'Listing submission failed');
+    }
   };
 
   return (
     <div>
       {/* Hero Section */}
-      <div style={heroStyle}>
-        <div>
-          <h1 style={{ fontSize: '4rem', marginBottom: '1rem', fontWeight: 'bold', letterSpacing: '-1px' }}>Welcome to RideHub</h1>
-          <p style={{ fontSize: '1.4rem', marginBottom: '1.5rem', opacity: 0.95, maxWidth: '600px', margin: '0 auto 1.5rem' }}>
+      <section className="home-hero">
+        <div className="home-hero-content">
+          <h1>Welcome to RideHub</h1>
+          <p>
 
             Your premium vehicle rental platform. Book cars and bikes instantly with unbeatable prices!
           </p>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+        <div className="home-hero-actions">
           <Link 
             to="/cars" 
-            style={{...carsButtonStyle, boxShadow: '0 8px 20px rgba(16, 185, 129, 0.4)'}}
+            className="home-hero-button home-hero-button-cars"
           >
             🚗 Browse Cars
           </Link>
           <Link 
             to="/bikes" 
-            style={{...bikesButtonStyle, boxShadow: '0 8px 20px rgba(245, 158, 11, 0.4)'}}
+            className="home-hero-button home-hero-button-bikes"
           >
             🏍️ Browse Bikes
           </Link>
+        </div>
+      </section>
+
+      <div style={{ padding: '2.5rem 1.5rem', background: '#eef4ff' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2563eb', fontWeight: '700' }}>AI Recommendation</p>
+              <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem', color: '#111827', fontWeight: 'bold' }}>Find the best car for your trip</h3>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select value={tripType} onChange={(e) => setTripType(e.target.value)} style={{ padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #d1d5db', fontSize: '0.95rem', background: '#fff' }}>
+                <option value="family">Family trip</option>
+                <option value="business">Business</option>
+                <option value="weekend">Weekend escape</option>
+                <option value="adventure">Adventure</option>
+                <option value="city">City drive</option>
+              </select>
+              <select value={passengers} onChange={(e) => setPassengers(Number(e.target.value))} style={{ padding: '0.75rem 1rem', borderRadius: '10px', border: '1px solid #d1d5db', fontSize: '0.95rem', background: '#fff' }}>
+                {[1,2,3,4,5,6,7].map(option => (
+                  <option key={option} value={option}>{option} passengers</option>
+                ))}
+              </select>
+              <button onClick={getRecommendations} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem 1.2rem', fontWeight: '700', cursor: 'pointer' }}>
+                {isLoadingRecommendations ? 'Finding...' : 'Get match'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
+            {recommendations.length > 0 ? (
+              recommendations.map((vehicle) => (
+                <div key={vehicle.id} style={{ background: '#fff', borderRadius: '16px', padding: '1.2rem', boxShadow: '0 8px 22px rgba(37, 99, 235, 0.1)', border: '1px solid #dbeafe' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                    <span style={{ background: '#dbeafe', color: '#1d4ed8', padding: '0.35rem 0.65rem', borderRadius: '999px', fontWeight: '700', fontSize: '0.72rem' }}>{vehicle.score}/100 match</span>
+                    <span style={{ color: '#6b7280', fontWeight: '600', fontSize: '0.8rem' }}>{vehicle.type}</span>
+                  </div>
+                  <h4 style={{ margin: 0, fontSize: '1.25rem', color: '#111827', fontWeight: '700' }}>{vehicle.name}</h4>
+                  <p style={{ margin: '0.5rem 0', color: '#4b5563', fontWeight: '600' }}>{vehicle.reason}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#111827', fontWeight: '700', margin: '0.8rem 0' }}>
+                    <span>Rs {Number(vehicle.price_per_day).toLocaleString()}/day</span>
+                    <span>{vehicle.seats} seats</span>
+                  </div>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.5rem' }}>
+                    {vehicle.features.map((feature, idx) => (
+                      <li key={`${vehicle.id}-${idx}`} style={{ color: '#374151', fontSize: '0.9rem' }}>✓ {feature}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            ) : (
+              <div style={{ gridColumn: '1 / -1', background: '#fff', borderRadius: '16px', padding: '1.5rem', textAlign: 'center', color: '#4b5563' }}>
+                {isLoadingRecommendations ? 'Loading recommendations...' : 'Choose your trip type to see smart suggestions.'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <section className="marketplace-section">
+        <div className="marketplace-container">
+          <p className="marketplace-eyebrow">Digital Fleet Marketplace</p>
+          <h3 className="marketplace-title">Rent unique vehicles from local owners</h3>
+          <div className="marketplace-grid">
+            {marketplaceListings.length > 0 ? marketplaceListings.map((listing, index) => (
+              <div className="marketplace-card" key={`${listing.vehicle_name}-${index}`}>
+                <span className="marketplace-card-meta">{listing.city} · {listing.vehicle_type}</span>
+                <h4>{listing.vehicle_name}</h4>
+                <div className="marketplace-card-footer">
+                  <span>₹{Number(listing.price_per_day).toLocaleString('en-IN')}/day</span>
+                  <span>{listing.seats} seats</span>
+                </div>
+              </div>
+            )) : (
+              <div className="marketplace-empty">No owner listings are approved yet. Be the first to list your vehicle.</div>
+            )}
+          </div>
+          <form onSubmit={submitMarketplaceListing} className="marketplace-form">
+            <input placeholder="Owner name" value={marketplaceRequest.owner_name} onChange={(e) => setMarketplaceRequest({ ...marketplaceRequest, owner_name: e.target.value })} required />
+            <input type="email" placeholder="Owner email" value={marketplaceRequest.owner_email} onChange={(e) => setMarketplaceRequest({ ...marketplaceRequest, owner_email: e.target.value })} required />
+            <input placeholder="Vehicle name" value={marketplaceRequest.vehicle_name} onChange={(e) => setMarketplaceRequest({ ...marketplaceRequest, vehicle_name: e.target.value })} required />
+            <input placeholder="City" value={marketplaceRequest.city} onChange={(e) => setMarketplaceRequest({ ...marketplaceRequest, city: e.target.value })} required />
+            <input type="number" min="1" placeholder="Price/day" value={marketplaceRequest.price_per_day} onChange={(e) => setMarketplaceRequest({ ...marketplaceRequest, price_per_day: e.target.value })} required />
+            <button type="submit">List my vehicle</button>
+            {marketplaceMessage && <div className="marketplace-message">{marketplaceMessage}</div>}
+          </form>
+        </div>
+      </section>
+
+      <div style={{ padding: '2.5rem 1.5rem', background: '#111827' }}>
+        <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.2rem' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#7dd3fc', fontWeight: '700' }}>Corporate Rentals</p>
+              <h3 style={{ margin: '0.5rem 0 0', fontSize: '2rem', color: '#fff', fontWeight: 'bold' }}>Business fleet made simple</h3>
+            </div>
+          </div>
+
+          <form onSubmit={submitCorporateBooking} style={{ background: '#1f2937', borderRadius: '18px', padding: '1.3rem', border: '1px solid #374151', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', color: '#fff' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Company name</label>
+              <input value={corporateRequest.company_name} onChange={(e) => setCorporateRequest({ ...corporateRequest, company_name: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Company email</label>
+              <input type="email" value={corporateRequest.company_email} onChange={(e) => setCorporateRequest({ ...corporateRequest, company_email: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Contact person</label>
+              <input value={corporateRequest.contact_person} onChange={(e) => setCorporateRequest({ ...corporateRequest, contact_person: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>GST number</label>
+              <input value={corporateRequest.gst_number} onChange={(e) => setCorporateRequest({ ...corporateRequest, gst_number: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Vehicle</label>
+              <select value={corporateRequest.vehicle_name} onChange={(e) => setCorporateRequest({ ...corporateRequest, vehicle_name: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }}>
+                <option>Hyundai Creta</option>
+                <option>Maruti Swift</option>
+                <option>Innova Crysta</option>
+                <option>Mahindra Thar</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Vehicle type</label>
+              <select value={corporateRequest.vehicle_type} onChange={(e) => setCorporateRequest({ ...corporateRequest, vehicle_type: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }}>
+                <option value="car">Car</option>
+                <option value="bike">Bike</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Start date</label>
+              <input type="date" value={corporateRequest.start_date} onChange={(e) => setCorporateRequest({ ...corporateRequest, start_date: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>End date</label>
+              <input type="date" value={corporateRequest.end_date} onChange={(e) => setCorporateRequest({ ...corporateRequest, end_date: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} required />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Passengers</label>
+              <input type="number" min="1" value={corporateRequest.passengers} onChange={(e) => setCorporateRequest({ ...corporateRequest, passengers: Number(e.target.value) })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Billing cycle</label>
+              <select value={corporateRequest.billing_cycle} onChange={(e) => setCorporateRequest({ ...corporateRequest, billing_cycle: e.target.value })} style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff' }}>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', color: '#cbd5e1', marginBottom: '0.35rem' }}>Notes</label>
+              <textarea value={corporateRequest.notes} onChange={(e) => setCorporateRequest({ ...corporateRequest, notes: e.target.value })} rows="3" style={{ width: '100%', padding: '0.8rem 0.9rem', borderRadius: '10px', border: '1px solid #4b5563', background: '#111827', color: '#fff', resize: 'vertical' }} />
+            </div>
+            <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0', fontSize: '0.9rem' }}>
+                <input type="checkbox" checked={corporateRequest.invoice_required} onChange={(e) => setCorporateRequest({ ...corporateRequest, invoice_required: e.target.checked })} />
+                Need invoice / GST billing
+              </label>
+              <button type="submit" style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', padding: '0.8rem 1.4rem', fontWeight: '700', cursor: 'pointer' }}>Submit corporate request</button>
+            </div>
+            {corporateMessage && (
+              <div style={{ gridColumn: '1 / -1', color: '#d1fae5', background: '#064e3b', border: '1px solid #10b981', borderRadius: '10px', padding: '0.8rem 1rem' }}>{corporateMessage}</div>
+            )}
+            {fraudRisk && (
+              <div style={{ gridColumn: '1 / -1', background: '#0f172a', border: '1px solid #334155', borderRadius: '12px', padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem', marginBottom: '0.6rem' }}>
+                  <h4 style={{ margin: 0, color: '#f8fafc', fontSize: '1rem' }}>Fraud Risk Engine</h4>
+                  <span style={{ background: fraudRisk.verdict === 'high' ? '#7f1d1d' : fraudRisk.verdict === 'medium' ? '#78350f' : '#064e3b', color: '#fff', borderRadius: '999px', padding: '0.3rem 0.7rem', fontSize: '0.7rem', fontWeight: '700', textTransform: 'uppercase' }}>{fraudRisk.verdict}</span>
+                </div>
+                <div style={{ color: '#cbd5e1', fontSize: '0.85rem', marginBottom: '0.6rem' }}>Risk score: <strong style={{ color: '#fff' }}>{fraudRisk.risk_score}/100</strong></div>
+                <div style={{ color: '#cbd5e1', fontSize: '0.85rem', marginBottom: '0.6rem' }}>Action: <strong style={{ color: '#fff' }}>{fraudRisk.action}</strong></div>
+                <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#cbd5e1', display: 'grid', gap: '0.35rem' }}>
+                  {fraudRisk.reasons.map((reason, index) => (
+                    <li key={`${reason}-${index}`}>{reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </form>
         </div>
       </div>
 
@@ -197,13 +493,13 @@ export default function Home() {
         <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
           <Link 
             to="/cars" 
-            style={{...buttonStyle, background: '#fff', color: '#667eea', fontWeight: 'bold'}}
+            className="home-cta-button"
           >
             🚗 Explore Cars
           </Link>
           <Link 
             to="/bikes" 
-            style={{...buttonStyle, background: '#fff', color: '#667eea', fontWeight: 'bold'}}
+            className="home-cta-button"
           >
             🏍️ Explore Bikes
           </Link>

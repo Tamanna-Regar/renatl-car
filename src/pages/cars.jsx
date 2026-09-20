@@ -1,13 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
+// ⭐ STAR DISPLAY (read-only)
+function StarDisplay({ rating, count }) {
+  const filled = Math.round(rating);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+      {[1,2,3,4,5].map(s => (
+        <span key={s} style={{ color: s <= filled ? '#f59e0b' : '#d1d5db', fontSize: '13px' }}>★</span>
+      ))}
+      <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: '2px' }}>
+        {rating > 0 ? `${rating.toFixed(1)}` : 'No ratings'}
+        {count > 0 ? ` (${count})` : ''}
+      </span>
+    </span>
+  );
+}
+
 export const carsList = [
   {
     id: 1,
     name: 'Maruti Swift',
     price: 'Rs 2,500/day',
-    image:
-      'https://images.unsplash.com/photo-1549924231-f129b911e442?w=800',
+    image: 'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=800',
     specs: {
       model: 'Swift VXI 2024',
       rating: '4.4',
@@ -605,12 +620,11 @@ export const carsList = [
       mileage: '17 km/l',
     },
   },
-  {
+ {
     id: 44,
     name: 'Jeep Meridian',
     price: 'Rs 5,500/day',
-    image:
-      'https://images.unsplash.com/photo-1627454820516-dc767bcb4d5e?w=800',
+    image: 'https://images.unsplash.com/photo-1533473359331-0135ef1b58bf?w=800', // Yeh ek proper SUV/Car ka image link hai
     specs: {
       model: 'Meridian Limited',
       rating: '4.7',
@@ -683,14 +697,7 @@ export const carsList = [
   },
 ];
 
-/* =====================================================
-   NORMALIZE CAR
-   (id is always forced to a STRING here — this is the fix
-   for the "duplicate key 50" warning: without String(),
-   a fleet car with id "50" and a built-in car with id 50
-   are treated as different values by Set/comparisons,
-   so duplicates could slip through)
-===================================================== */
+/* NORMALIZE CAR */
 
 const normalizeCar = (car, index = 0) => {
   const safeCar = car || {};
@@ -757,9 +764,7 @@ const normalizeCar = (car, index = 0) => {
   };
 };
 
-/* =====================================================
-   CARS COMPONENT
-===================================================== */
+/* CARS COMPONENT */
 
 export default function Cars() {
   const [cars, setCars] = useState(() => {
@@ -811,10 +816,35 @@ export default function Cars() {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFuel, setSelectedFuel] = useState('All');
+  const [selectedTransmission, setSelectedTransmission] = useState('All');
+  const [maxPrice, setMaxPrice] = useState(15000);
 
-  /* =====================================================
-     PERIODICALLY CHECK BOOKING EXPIRATION
-  ===================================================== */
+  // ⭐ VEHICLE REVIEWS STATE
+  const [vehicleReviews, setVehicleReviews] = useState({});
+  const [expandedReviews, setExpandedReviews] = useState({}); // { carId: true/false }
+
+  // Load reviews from localStorage
+  useEffect(() => {
+    const loadReviews = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('vehicleReviews') || '{}');
+        setVehicleReviews(saved);
+      } catch (_) {}
+    };
+    loadReviews();
+    window.addEventListener('storage', loadReviews);
+    return () => window.removeEventListener('storage', loadReviews);
+  }, []);
+
+  // Helper: get avg rating for a vehicle
+  const getAvgRating = (carName) => {
+    const reviews = vehicleReviews[carName] || [];
+    if (!reviews.length) return { avg: 0, count: 0 };
+    const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
+    return { avg, count: reviews.length };
+  };
+
+  /* PERIODICALLY CHECK BOOKING EXPIRATION */
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -842,9 +872,7 @@ export default function Cars() {
     return () => clearInterval(interval);
   }, []);
 
-  /* =====================================================
-     LOAD ADMIN VEHICLE FLEET CARS
-  ===================================================== */
+  /* LOAD ADMIN VEHICLE FLEET CARS */
 
   useEffect(() => {
     const loadFleetCars = () => {
@@ -895,7 +923,7 @@ export default function Cars() {
             )
           );
 
-          // Existing normal cars ko rakho (skip anything
+          // Existing normal cars 
           // whose id now matches a fleet car's id)
           const normalCars = prev.filter(
             (car) =>
@@ -916,7 +944,6 @@ export default function Cars() {
       }
     };
 
-    // Page open hote hi Admin ki cars load karo
     loadFleetCars();
 
     // Agar localStorage kisi dusre tab/window se change ho
@@ -939,9 +966,7 @@ export default function Cars() {
     };
   }, []);
 
-  /* =====================================================
-     SAVE CARS
-  ===================================================== */
+  /* SAVE CARS */
 
   useEffect(() => {
     try {
@@ -957,10 +982,7 @@ export default function Cars() {
     }
   }, [cars]);
 
-  /* =====================================================
-     RENT NOW
-     3 DAYS BOOKING
-  ===================================================== */
+  /* RENT NOW 3 DAYS BOOKING */
 
   const handleRentNow = (carId) => {
     const threeDaysInMillis =
@@ -991,9 +1013,7 @@ export default function Cars() {
     );
   };
 
-  /* =====================================================
-     FILTER
-  ===================================================== */
+  /* FILTER */
 
   const filteredCars = cars.filter((car) => {
     const carName = String(
@@ -1021,18 +1041,24 @@ export default function Cars() {
       car?.specs?.fuelType ===
         selectedFuel;
 
+    const matchesTrans = 
+      selectedTransmission === 'All' ||
+      car?.specs?.transmission === selectedTransmission;
+
+    const carPriceRaw = String(car?.price || '').replace(/[^0-9]/g, '');
+    const carPrice = carPriceRaw ? parseInt(carPriceRaw, 10) : 0;
+    const matchesPrice = carPrice <= maxPrice;
+
     return (
       matchesSearch &&
-      matchesFuel
+      matchesFuel && matchesTrans && matchesPrice
     );
   });
 
-  /* =====================================================
-     UI
-  ===================================================== */
+  /* UI */
 
   return (
-    <div
+    <div className="catalog-page"
       style={{
         padding: '2rem',
         minHeight: '100vh',
@@ -1114,7 +1140,34 @@ export default function Cars() {
             Electric
           </option>
         </select>
-      </div>
+
+        <select
+          value={selectedTransmission}
+          onChange={(e) => setSelectedTransmission(e.target.value)}
+          style={{
+            padding: '10px',
+            fontSize: '16px',
+            borderRadius: '4px',
+            border: '1px solid #ccc',
+          }}
+        >
+          <option value="All">All Transmissions</option>
+          <option value="Automatic">Automatic</option>
+          <option value="Manual">Manual</option>
+        </select>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#fff', padding: '0 10px', borderRadius: '4px', border: '1px solid #ccc' }}>
+          <label style={{fontWeight: 'bold', fontSize: '14px'}}>Max Price: ₹{maxPrice}</label>
+          <input
+            type="range"
+            min="1000"
+            max="15000"
+            step="500"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(e.target.value)}
+            style={{ cursor: 'pointer' }}
+          />
+        </div>
 
       {/* CAR LIST */}
 
@@ -1168,12 +1221,20 @@ export default function Cars() {
                 style={{
                   fontSize: '1.2rem',
                   margin:
-                    '12px 0 6px 0',
+                    '12px 0 4px 0',
                   fontWeight: 'bold',
                 }}
               >
                 {car.name}
               </h3>
+
+              {/* ⭐ STAR RATING DISPLAY */}
+              <div style={{ margin: '0 0 6px', textAlign: 'center' }}>
+                {(() => {
+                  const { avg, count } = getAvgRating(car.name);
+                  return <StarDisplay rating={avg} count={count} />;
+                })()}
+              </div>
 
               {/* PRICE */}
 
@@ -1294,105 +1355,87 @@ export default function Cars() {
                   </p>
                 )}
               </div>
+              
+{/* BOOKING BUTTON / STATUS */}
 
-              {/* BOOKING BUTTON / STATUS */}
+<div
+  style={{
+    marginTop: '12px',
+  }}
+>
+  <span
+    style={{
+      fontSize: '12px',
+      display: 'block',
+      marginBottom: '8px',
+      color: car.isBooked ? 'red' : 'green',
+      fontWeight: 'bold',
+    }}
+  >
+    {car.isBooked
+      ? 'Rented Out'
+      : 'Available'}
+  </span>
 
-              <div
-                style={{
-                  marginTop: '12px',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '12px',
-                    display: 'block',
-                    marginBottom:
-                      '8px',
-                    color:
-                      car.isBooked
-                        ? 'red'
-                        : 'green',
-                    fontWeight:
-                      'bold',
-                  }}
-                >
-                  {car.isBooked
-                    ? 'Rented Out (3 Days Active)'
-                    : 'Available'}
-                </span>
+  {car.isBooked ? (
+    <button
+      disabled
+      style={{
+        display: 'inline-block',
+        width: '100%',
+        padding: '0.6rem 1.2rem',
+        background: '#6c757d',
+        color: '#fff',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'not-allowed',
+        fontWeight: 'bold',
+      }}
+    >
+      Booked (Not Available)
+    </button>
+  ) : (
+    <Link
+      to={`/booking/car/${car.id}`}
+      style={{
+        display: 'inline-block',
+        width: '100%',
+        padding: '0.6rem 1.2rem',
+        background: '#007bff',
+        color: '#fff',
+        border: 'none',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontWeight: 'bold',
+        textAlign: 'center',
+        textDecoration: 'none',
+        boxSizing: 'border-box',
+      }}
+    >
+      Rent Now
+    </Link>
+  )}
+</div>
 
-                {car.isBooked ? (
-                  <button
-                    disabled
-                    style={{
-                      display:
-                        'inline-block',
-                      width: '100%',
-                      padding:
-                        '0.6rem 1.2rem',
-                      background:
-                        '#6c757d',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor:
-                        'not-allowed',
-                      fontWeight:
-                        'bold',
-                    }}
-                  >
-                    Booked (Not Available)
-                  </button>
-                ) : (
-                  <button
-                    onClick={() =>
-                      handleRentNow(
-                        car.id
-                      )
-                    }
-                    style={{
-                      display:
-                        'inline-block',
-                      width: '100%',
-                      padding:
-                        '0.6rem 1.2rem',
-                      background:
-                        '#007bff',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor:
-                        'pointer',
-                      fontWeight:
-                        'bold',
-                      textAlign:
-                        'center',
-                    }}
-                  >
-                    Rent Now
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        )}
-      </div>
+</div>
+))
+}
+</div>
 
-      {/* NO RESULT */}
+{/* NO RESULT */}
 
-      {filteredCars.length ===
-        0 && (
-        <p
-          style={{
-            textAlign: 'center',
-            color: '#718096',
-            marginTop: '40px',
-          }}
-        >
-          No cars found matching
-          your criteria.
-        </p>
-      )}
+{filteredCars.length === 0 && (
+  <p
+    style={{
+      textAlign: 'center',
+      color: '#718096',
+      marginTop: '40px',
+    }}
+  >
+    No cars found matching your criteria.
+  </p>
+)}
+</div>
     </div>
-  );
+);
 }
