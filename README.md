@@ -48,3 +48,9 @@ Create a `.env` file in the `server` folder (see `.env.example`) with your own c
 
 **Tamanna Regar**  
 [GitHub](https://github.com/Tamanna-Regar) | [LinkedIn](https://linkedin.com/in/tamanna-regar-139a21382)
+
+##fronted
+ridehub-rental-car.netlify.app
+
+###backend
+https://renatl-car-ie8p.onrender.com
