@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 // Points → Rupees conversion
 const POINTS_TO_RS = 1; // 1 point = Rs 1

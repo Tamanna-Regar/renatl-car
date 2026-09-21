@@ -30,7 +30,7 @@ export default function Login() {
         loginEmail === 'admin@ridehub.com'
       ) {
         const response = await fetch(
-          'http://127.0.0.1:8000/api/admin/login',
+          'https://renatl-car-ie8p.onrender.com/api/admin/login',
           {
             method: 'POST',
             headers: {
@@ -100,7 +100,7 @@ export default function Login() {
       // EXISTING USER LOGIN FROM MONGODB
 
       const response = await fetch(
-        'http://127.0.0.1:8000/api/login',
+        'https://renatl-car-ie8p.onrender.com/api/login',
         {
           method: 'POST',
           headers: {

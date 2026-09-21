@@ -280,9 +280,9 @@ const [verifications, setVerifications] = useState(() => {
       let backendVehicles = [];
       try {
         const [bRes, vRes, alertsRes] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/bookings'),
-          fetch('http://127.0.0.1:8000/api/vehicles'),
-          fetch('http://127.0.0.1:8000/api/fleet-health/alerts')
+          fetch('https://renatl-car-ie8p.onrender.com/api/bookings'),
+          fetch('https://renatl-car-ie8p.onrender.com/api/vehicles'),
+          fetch('https://renatl-car-ie8p.onrender.com/api/fleet-health/alerts')
         ]);
         if (bRes.ok) {
           const bData = await bRes.json();
@@ -324,7 +324,7 @@ const [verifications, setVerifications] = useState(() => {
 
       setVehicles(uniqueFleet);
       try {
-        const maintenanceResponse = await fetch('http://127.0.0.1:8000/api/admin/maintenance');
+        const maintenanceResponse = await fetch('https://renatl-car-ie8p.onrender.com/api/admin/maintenance');
         if (maintenanceResponse.ok) {
           const maintenanceData = await maintenanceResponse.json();
           setMaintenanceOrders(maintenanceData.work_orders || []);
@@ -406,7 +406,7 @@ const [verifications, setVerifications] = useState(() => {
 
       // 6. Analytics summary from backend
       try {
-        const analyticsResponse = await fetch('http://127.0.0.1:8000/api/dashboard-stats');
+        const analyticsResponse = await fetch('https://renatl-car-ie8p.onrender.com/api/dashboard-stats');
         if (analyticsResponse.ok) {
           const analytics = await analyticsResponse.json();
           setAnalyticsSummary(analytics);
@@ -431,7 +431,7 @@ const [verifications, setVerifications] = useState(() => {
 
   useEffect(() => {
     if (activeTab !== 'revenue') return;
-    fetch('http://127.0.0.1:8000/api/admin/branch-analytics', {
+    fetch('https://renatl-car-ie8p.onrender.com/api/admin/branch-analytics', {
       headers: { Authorization: `Bearer ${localStorage.getItem('accessToken') || ''}` },
     })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('Branch analytics unavailable')))
@@ -655,7 +655,7 @@ const [verifications, setVerifications] = useState(() => {
   };
     const createMaintenanceOrder = async (event) => {
       event.preventDefault();
-      const response = await fetch('http://127.0.0.1:8000/api/admin/maintenance', {
+      const response = await fetch('https://renatl-car-ie8p.onrender.com/api/admin/maintenance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -683,7 +683,7 @@ const [verifications, setVerifications] = useState(() => {
     };
 
     const updateMaintenanceOrder = async (order, status) => {
-      const response = await fetch(`http://127.0.0.1:8000/api/admin/maintenance/${order.work_order_id}?status=${status}`, { method: 'PATCH' });
+      const response = await fetch(`https://renatl-car-ie8p.onrender.com/api/admin/maintenance/${order.work_order_id}?status=${status}`, { method: 'PATCH' });
       if (!response.ok) return;
       setMaintenanceOrders((current) => current.map((item) => item.work_order_id === order.work_order_id ? { ...item, status } : item));
       if (status === 'completed') {
@@ -777,7 +777,7 @@ const [verifications, setVerifications] = useState(() => {
 
       // Backend API sync
       try {
-          await fetch(`http://127.0.0.1:8000/api/admin/users/${targetUser.email || targetUser.id}/verify`, {
+          await fetch(`https://renatl-car-ie8p.onrender.com/api/admin/users/${targetUser.email || targetUser.id}/verify`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status })

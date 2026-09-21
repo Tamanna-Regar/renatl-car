@@ -18,7 +18,7 @@ export default function DamageReport() {
         (item) => String(item.bookingId || item._id) === String(bookingId)
       ) || {};
 
-      const response = await fetch(`http://127.0.0.1:8000/api/bookings/${bookingId}/damage`, {
+      const response = await fetch(`https://renatl-car-ie8p.onrender.com/api/bookings/${bookingId}/damage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

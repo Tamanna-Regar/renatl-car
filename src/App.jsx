@@ -10,7 +10,7 @@ import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Home from './pages/home';
-import Cars from './pages/Cars';
+import Cars from './pages/cars';
 import Bikes from './pages/Bikes';
 
 import Login from './pages/Login';

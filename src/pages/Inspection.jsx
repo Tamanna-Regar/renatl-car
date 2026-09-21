@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 export default function Inspection() {
   const { bookingId } = useParams();

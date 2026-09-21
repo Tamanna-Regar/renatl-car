@@ -8,7 +8,7 @@ import {
 } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 const stripePromise = loadStripe(
   'pk_test_51U8au0RpTYjY22GQmZBP4Nl3Fpm1ViqKc3uar6MXnNOxWFDZuY9nFu5zg7ngNfI7at0QRheOiLaBshU6lEWcURXy00webCuwwb'

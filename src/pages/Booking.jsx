@@ -6,7 +6,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 const FALLBACK_IMAGE =
   'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=1200&q=80';

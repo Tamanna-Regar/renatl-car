@@ -50,7 +50,7 @@ export default function Profile() {
 
     if (storedUser?.email) {
       try {
-        const res = await fetch(`${'http://127.0.0.1:8000'}/api/users/${encodeURIComponent(storedUser.email)}/verification`);
+        const res = await fetch(`${'https://renatl-car-ie8p.onrender.com'}/api/users/${encodeURIComponent(storedUser.email)}/verification`);
         const data = await res.json();
         if (data.success && data.verificationStatus) {
           setVerificationStatus(data.verificationStatus);
@@ -240,7 +240,7 @@ export default function Profile() {
 
     try {
       if (updatedUser.email) {
-        await fetch(`http://127.0.0.1:8000/api/users/${encodeURIComponent(updatedUser.email)}/verification`, {
+        await fetch(`https://renatl-car-ie8p.onrender.com/api/users/${encodeURIComponent(updatedUser.email)}/verification`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { carsList } from './Cars';
 import { bikesList } from './Bikes';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?auto=format&fit=crop&w=800&q=80';
 
@@ -365,7 +365,7 @@ export default function MyBookings() {
 
     if (bookingId && String(bookingId).startsWith('BKG_') === false) {
        try {
-           const res = await fetch(`http://127.0.0.1:8000/api/bookings/${bookingId}/cancel`, {
+           const res = await fetch(`https://renatl-car-ie8p.onrender.com/api/bookings/${bookingId}/cancel`, {
              method: 'POST',
              headers: { 'Content-Type': 'application/json' },
              body: JSON.stringify({ reason: 'Customer requested cancellation', policy: 'standard' })

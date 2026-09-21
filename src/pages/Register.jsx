@@ -40,7 +40,7 @@ export default function Register() {
        // REGISTER USER IN MONGODB
 
       const response = await fetch(
-        'http://127.0.0.1:8000/api/register',
+        'https://renatl-car-ie8p.onrender.com/api/register',
         {
           method: 'POST',
           headers: {

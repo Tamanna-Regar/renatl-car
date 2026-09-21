@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CircleMarker, MapContainer, Popup, TileLayer } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'https://renatl-car-ie8p.onrender.com';
 
 export default function LiveFleetControlTower({ theme }) {
   const [telemetry, setTelemetry] = useState({});
