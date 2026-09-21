@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { carsList } from './Cars';
+import { carsList } from './cars';
 import { bikesList } from './Bikes';
 
 const API_URL = 'https://renatl-car-ie8p.onrender.com';
